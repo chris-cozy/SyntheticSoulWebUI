@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { getOrCreateClientId } from "./ids";
 
 // Retro-84 Chatbot UI — API-ready version
 // - Accepts an optional `onAsk` prop that returns a Promise<string>
@@ -12,6 +13,7 @@ export default function SyntheticSoul({
   onAsk?: (input: string) => Promise<string>;
   title?: string;
 }) {
+  const clientId = getOrCreateClientId();
   const [messages, setMessages] = useState<
     { id: number; role: "user" | "assistant" | "system"; text: string }[]
   >([
@@ -19,7 +21,7 @@ export default function SyntheticSoul({
       id: 1,
       role: "system",
       text:
-        "VERSION 1.0 — YOU ARE BEING MONITORED FOR YOUR SAFETY.  作成者:居心地の良い — 2025",
+        "VERSION 1.0 — YOU ARE BEING MONITORED FOR YOUR SAFETY — " + clientId,
     },
     {
       id: 2,
@@ -162,7 +164,7 @@ export default function SyntheticSoul({
             <h1 className="text-xl font-black leading-none text-transparent bg-clip-text bg-gradient-to-r from-emerald-300 via-cyan-300 to-blue-400 drop-shadow-[0_0_15px_rgba(34,211,238,0.6)]">
               {title}<span className="text-rose-400">84</span>
             </h1>
-            <span className="text-[10px] tracking-widest text-emerald-300/70">居心地の良い — 2025</span>
+            <span className="text-[10px] tracking-widest text-emerald-300/70">作成者:居心地の良い — 2025</span>
           </div>
         </div>
       </header>
@@ -267,7 +269,7 @@ function Message({ role, text }: { role: "user" | "assistant" | "system"; text: 
     <div className={`mt-3 flex ${isUser ? "justify-end" : "justify-start"}`}>
       {isUser ? (
         <UserBubble>
-          <Label>USER_//</Label>
+          <Label>GUEST_{getOrCreateClientId()}_//</Label>
           <p className="whitespace-pre-wrap text-emerald-50/90">{text}</p>
         </UserBubble>
       ) : (
