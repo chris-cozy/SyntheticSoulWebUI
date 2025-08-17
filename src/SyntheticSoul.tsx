@@ -51,14 +51,25 @@ export default function SyntheticSoul({
     setLive("");
 
     try {
+      const ignoreResponse = "JASMINE has chosen to ignore your correspondence.";
       const reply = onAsk
         ? await onAsk(trimmed)
         : await mockGenerateReply(trimmed, (chunk) => setLive(chunk));
 
-      setMessages((m) => [
-        ...m,
-        { id: Date.now() + 1, role: "assistant", text: reply },
-      ]);
+      console.log("REPLY:" + reply);
+
+      if (!onAsk == null){
+        setMessages((m) => [
+          ...m,
+          { id: Date.now() + 1, role: "assistant", text: reply },
+        ]);
+      }else{
+        setMessages((m) => [
+          ...m,
+          { id: Date.now() + 1, role: "system", text: ignoreResponse },
+        ]);
+      }
+      
     } catch (err: any) {
       setMessages((m) => [
         ...m,

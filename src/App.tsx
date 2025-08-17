@@ -17,7 +17,7 @@ export default function App() {
     }
     const data = await res.json();
     // Expecting { response: string } from your API
-    return data.response ?? String(data);
+    return data.response ?? null;
   };
 
   return <SyntheticSoul onAsk={ask} title="JASMINE" />;
