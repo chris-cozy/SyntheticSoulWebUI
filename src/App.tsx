@@ -1,6 +1,11 @@
 import SyntheticSoul from "./SyntheticSoul";
+import { getOrCreateClientId } from "./ids";
 
 export default function App() {
+  const clientId = getOrCreateClientId();
+
+  const username = import.meta.env.VITE_SYNTHETIC_SOUL_GUEST_USER + '_' + clientId;
+
   // external API call — adjust to your endpoint + auth
   const ask = async (input: string): Promise<string> => {
     const res = await fetch(`${import.meta.env.VITE_SYNTHETIC_SOUL_CHAT_URL}`, {
@@ -8,7 +13,7 @@ export default function App() {
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ message: input, username: import.meta.env.VITE_SYNTHETIC_SOUL_GUEST_USER, type: import.meta.env.VITE_SYNTHETIC_SOUL_DM_TYPE}),
+      body: JSON.stringify({ message: input, username: username, type: import.meta.env.VITE_SYNTHETIC_SOUL_DM_TYPE}),
     });
 
     if (!res.ok) {
