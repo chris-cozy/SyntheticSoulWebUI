@@ -86,6 +86,7 @@ export default function SyntheticSoul({
     }
   }
 
+  /*
   // Mock type-out reply used when onAsk is not supplied
   function mockGenerateReplyText(user: string) {
     const templates = [
@@ -101,6 +102,7 @@ export default function SyntheticSoul({
     );
   }
 
+  
   function mockGenerateReply(user: string, onChunk?: (t: string) => void) {
     return new Promise<string>((resolve) => {
       const full = mockGenerateReplyText(user);
@@ -118,6 +120,7 @@ export default function SyntheticSoul({
       }, 18);
     });
   }
+    */
 
   const grid = useMemo(() => {
     const svg = encodeURIComponent(`
