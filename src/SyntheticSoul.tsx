@@ -201,7 +201,7 @@ export default function SyntheticSoul({
               <div className="mt-3">
                 <AssistantBubble>
                   <div className="flex items-center gap-2">
-                    <span className="text-xs">JASMINE TYPING</span>
+                    <span className="text-xs">JASMINE THINKING</span>
                     <Dots />
                   </div>
                   <div className="mt-2 text-emerald-100/90">{live}<span className="animate-pulse">▌</span></div>
