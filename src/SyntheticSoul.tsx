@@ -64,7 +64,7 @@ export default function SyntheticSoul({
         result = await onAsk(trimmed);
       } else {
         // fallback for dev
-        result = { text: "ACK (demo)", time: Math.random() * 1.5 + 0.2, emote: "neutral" };
+        result = { text: "ACK (demo)", time: Math.random() * 1.5 + 0.2, expression: "neutral" };
       }
 
       // Update assistant message text
@@ -82,7 +82,7 @@ export default function SyntheticSoul({
       }
 
       // Update panel fields
-      setLastExpression(result.emote);
+      setLastExpression(result.expression);
       setLastLatency(result.time);
       
     } catch (err: any) {

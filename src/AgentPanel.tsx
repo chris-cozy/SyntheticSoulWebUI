@@ -30,6 +30,8 @@ function ExpressionImage({ name }: { name: string }) {
 
   const src = useMemo(() => expressionUrl(name, EXT_ORDER[idx] as string), [name, idx]);
 
+  console.log(src)
+
   return (
     <img
       src={src}
@@ -79,6 +81,7 @@ function ExpressionImage({ name }: { name: string }) {
 export default function AgentPanel({ expression, lastLatency }: Props) {
   // Decide which expression name to attempt (prefer provided, fallback to default)
   const name = expression && expression.trim() ? expression : DEFAULT_EXPRESSION;
+  console.log(expression)
 
   return (
     <div className="relative overflow-hidden rounded-2xl border border-emerald-500/25 bg-gradient-to-b from-emerald-950/40 to-black/70 shadow-2xl">
