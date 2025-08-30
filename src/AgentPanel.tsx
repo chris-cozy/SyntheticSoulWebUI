@@ -2,33 +2,33 @@
 import { useMemo, useRef, useState } from "react";
 
 type Props = {
-  emote?: string;       // e.g. "happy"
+  expression?: string;       // e.g. "happy"
   lastLatency?: number; // seconds
 };
 
-const DEFAULT_EMOTE = "neutral";
+const DEFAULT_EXPRESSION = "neutral";
 const EXT_ORDER = ["png", "jpg", "jpeg", "webp", "svg"] as const;
 
 // Cache which extension worked for a given emote name
-const emoteExtCache = new Map<string, string>();
+const expressionExtCache = new Map<string, string>();
 
 // Build URL for an emote + ext
-function emoteUrl(name: string, ext: string) {
-  return `/emotes/${name}.${ext}`;
+function expressionUrl(name: string, ext: string) {
+  return `/expressions/${name}.${ext}`;
 }
 
 /**
  * Small image component that tries multiple extensions in order.
  * Caches the successful extension so future loads skip straight to it.
  */
-function EmoteImage({ name }: { name: string }) {
-  const cachedExt = emoteExtCache.get(name);
+function ExpressionImage({ name }: { name: string }) {
+  const cachedExt = expressionExtCache.get(name);
   const initialIndex = cachedExt ? Math.max(0, EXT_ORDER.indexOf(cachedExt as any)) : 0;
 
   const [idx, setIdx] = useState<number>(initialIndex);
   const attemptedFallback = useRef(false);
 
-  const src = useMemo(() => emoteUrl(name, EXT_ORDER[idx] as string), [name, idx]);
+  const src = useMemo(() => expressionUrl(name, EXT_ORDER[idx] as string), [name, idx]);
 
   return (
     <img
@@ -45,18 +45,18 @@ function EmoteImage({ name }: { name: string }) {
         }
 
         // If all failed and not already tried default
-        if (!attemptedFallback.current && name !== DEFAULT_EMOTE) {
+        if (!attemptedFallback.current && name !== DEFAULT_EXPRESSION) {
           attemptedFallback.current = true;
 
-          // Try default emote across extensions
+          // Try default expression across extensions
           let i = 0;
           const tryDefault = () => {
             if (i >= EXT_ORDER.length) return; // give up
-            const candidate = emoteUrl(DEFAULT_EMOTE, EXT_ORDER[i]);
+            const candidate = expressionUrl(DEFAULT_EXPRESSION, EXT_ORDER[i]);
             const testImg = new Image();
             testImg.onload = () => {
               target.src = candidate;
-              emoteExtCache.set(DEFAULT_EMOTE, EXT_ORDER[i]);
+              expressionExtCache.set(DEFAULT_EXPRESSION, EXT_ORDER[i]);
             };
             testImg.onerror = () => {
               i++;
@@ -70,15 +70,15 @@ function EmoteImage({ name }: { name: string }) {
       onLoad={(ev) => {
         const url = ev.currentTarget.src;
         const ext = EXT_ORDER.find((x) => url.endsWith(`.${x}`));
-        if (ext) emoteExtCache.set(name, ext);
+        if (ext) expressionExtCache.set(name, ext);
       }}
     />
   );
 }
 
-export default function AgentPanel({ emote, lastLatency }: Props) {
-  // Decide which emote name to attempt (prefer provided, fallback to default)
-  const name = emote && emote.trim() ? emote : DEFAULT_EMOTE;
+export default function AgentPanel({ expression, lastLatency }: Props) {
+  // Decide which expression name to attempt (prefer provided, fallback to default)
+  const name = expression && expression.trim() ? expression : DEFAULT_EXPRESSION;
 
   return (
     <div className="relative overflow-hidden rounded-2xl border border-emerald-500/25 bg-gradient-to-b from-emerald-950/40 to-black/70 shadow-2xl">
@@ -92,7 +92,7 @@ export default function AgentPanel({ emote, lastLatency }: Props) {
 
       {/* Emote */}
       <div className="relative aspect-[4/3] w-full overflow-hidden">
-        <EmoteImage name={name} />
+        <ExpressionImage name={name} />
 
         {/* scanline/grid overlay */}
         <div
@@ -111,7 +111,7 @@ export default function AgentPanel({ emote, lastLatency }: Props) {
           cortex link: ok
         </span>
         <span className="rounded bg-emerald-900/30 px-2 py-0.5 text-emerald-300">
-          emote: {emote ?? "—"}
+          expression: {expression ?? "—"}
         </span>
       </div>
     </div>
