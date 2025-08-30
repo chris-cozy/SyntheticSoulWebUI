@@ -1,5 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { getOrCreateClientId } from "./ids";
+import AgentPanel from "./AgentPanel";
+import type { AskResult } from "./App";
 
 // Retro-84 Chatbot UI — API-ready version
 // - Accepts an optional `onAsk` prop that returns a Promise<string>
@@ -10,7 +12,7 @@ export default function SyntheticSoul({
   onAsk,
   title = "JASMINE",
 }: {
-  onAsk?: (input: string) => Promise<string>;
+  onAsk?: (input: string) => Promise<AskResult>;
   title?: string;
 }) {
   const clientId = getOrCreateClientId();
@@ -35,6 +37,9 @@ export default function SyntheticSoul({
   const [live, setLive] = useState("");
   const listRef = useRef<HTMLDivElement | null>(null);
 
+  const [lastEmote, setLastEmote] = useState<string | undefined>(undefined);
+  const [lastLatency, setLastLatency] = useState<number | undefined>(undefined);
+
   useEffect(() => {
     listRef.current?.scrollTo({
       top: listRef.current.scrollHeight,
@@ -54,16 +59,20 @@ export default function SyntheticSoul({
 
     try {
       const ignoreResponse = "JASMINE has chosen to ignore your correspondence.";
-      const reply = onAsk
-        ? await onAsk(trimmed)
-        : null;
+      let result: AskResult = { text: "" };
+      if (onAsk) {
+        result = await onAsk(trimmed);
+      } else {
+        // fallback for dev
+        result = { text: "ACK (demo)", time: Math.random() * 1.5 + 0.2, emote: "neutral" };
+      }
 
-      console.log("REPLY:" + reply);
-
-      if (reply){
+      // Update assistant message text
+      const replyText = result.text;
+      if (replyText){
         setMessages((m) => [
           ...m,
-          { id: Date.now() + 1, role: "assistant", text: reply },
+          { id: Date.now() + 1, role: "assistant", text: replyText },
         ]);
       }else{
         setMessages((m) => [
@@ -71,6 +80,10 @@ export default function SyntheticSoul({
           { id: Date.now() + 1, role: "system", text: ignoreResponse },
         ]);
       }
+
+      // Update panel fields
+      setLastEmote(result.emote);
+      setLastLatency(result.time);
       
     } catch (err: any) {
       setMessages((m) => [
@@ -79,7 +92,7 @@ export default function SyntheticSoul({
           id: Date.now() + 2,
           role: "assistant",
           text:
-            "ERROR: EXTERNAL THOUGHT FUNCTION FAILED TO RESPOND. PLEASE CHECK YOUR NETWORK, CORS, OR AUTH KEYS.",
+            "ERROR: EXTERNAL THOUGHT FUNCTION FAILED. PLEASE CHECK SERVER.",
         },
       ]);
     } finally {
@@ -87,42 +100,6 @@ export default function SyntheticSoul({
       setLive("");
     }
   }
-
-  /*
-  // Mock type-out reply used when onAsk is not supplied
-  function mockGenerateReplyText(user: string) {
-    const templates = [
-      `AFFIRMATIVE. PROCESSING: "${user.toUpperCase()}". TRUST IN THE SYSTEM.`,
-      `REQUEST "${user.toUpperCase()}" RECEIVED. SAVING SEARCH DATA… DO NOT BE EVIL.`,
-      `QUERY ACCEPTED: ${user.toUpperCase()}. JASMINE84 LOADING MODULES…`,
-      `COMPLIANCE SAYS THIS IS A PREMIUM THOUGHT. UNLOCKING AFTER ADVERTISEMENT… JUST KIDDING (FOR NOW).`,
-    ];
-    const t = templates[Math.floor(Math.random() * templates.length)];
-    return (
-      t +
-      "\n\n> NOTE: ALL RESPONSES ARE EPHEMERAL UNLESS OTHERWISE MANDATED BY THE GOVERNING BODY."
-    );
-  }
-
-  
-  function mockGenerateReply(user: string, onChunk?: (t: string) => void) {
-    return new Promise<string>((resolve) => {
-      const full = mockGenerateReplyText(user);
-      let acc = "";
-      const chars = full.split("");
-      const timer = setInterval(() => {
-        if (!chars.length) {
-          clearInterval(timer);
-          onChunk?.(acc);
-          resolve(full);
-          return;
-        }
-        acc += chars.shift();
-        onChunk?.(acc + (Math.random() > 0.85 ? "_" : ""));
-      }, 18);
-    });
-  }
-    */
 
   const grid = useMemo(() => {
     const svg = encodeURIComponent(`
@@ -168,77 +145,95 @@ export default function SyntheticSoul({
           </div>
         </div>
       </header>
-
+        
+      
       {/* Content panel */}
-      <main className="relative z-20 mx-auto mt-6 flex max-w-5xl flex-col gap-3 px-3 sm:px-4">
-        {/* Glitch title bar */}
-        <section className="rounded-2xl border border-emerald-400/30 bg-black/50 p-4 shadow-[0_0_40px_rgba(16,185,129,0.25)]">
-          <div className="flex items-center justify-between">
-            <div className="text-sm text-emerald-200/80 tracking-widest">
-              <span className="mr-2">JASMINE</span>· SAVING CONVERSATION DATA…
+      <main className="relative z-20 mx-auto mt-6 max-w-5xl px-3 sm:px-4">
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-5 md:gap-6">
+          {/* LEFT: Agent panel (sticky) */}
+          <aside className="md:col-span-2">
+            <div className="sticky top-24">
+              <AgentPanel emote={lastEmote} lastLatency={lastLatency} />
             </div>
-            <div className="text-xs text-emerald-300/70">“DON'T BE EVIL”</div>
-          </div>
-          <div className="mt-2 h-1.5 w-full overflow-hidden rounded bg-emerald-900/50">
-            <div className="h-full w-1/3 animate-[load_2.8s_ease_infinite] bg-gradient-to-r from-emerald-400 to-cyan-400" />
-          </div>
-        </section>
+          </aside>
 
-        {/* Chat area */}
-        <section
-          className="relative rounded-2xl border border-emerald-400/30 bg-black/60 p-3 sm:p-4 shadow-[0_0_60px_rgba(16,185,129,0.25)]"
-          style={{ backgroundImage: `${grid}`, backgroundSize: "64px 64px" }}
-        >
-          <div className="pointer-events-none absolute inset-0 rounded-2xl ring-1 ring-emerald-400/10" />
-          <div className="pointer-events-none absolute inset-x-0 top-0 h-24 rounded-t-2xl bg-gradient-to-b from-white/5 to-transparent" />
-
-          <div ref={listRef} className="relative z-10 max-h-[60vh] overflow-y-auto pr-1">
-            {messages.map((m) => (
-              <Message key={m.id} role={m.role} text={m.text} />
-            ))}
-
-            {typing && (
-              <div className="mt-3">
-                <AssistantBubble>
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs">JASMINE THINKING</span>
-                    <Dots />
-                  </div>
-                  <div className="mt-2 text-emerald-100/90">{live}<span className="animate-pulse">▌</span></div>
-                </AssistantBubble>
+          {/* RIGHT: everything you had before */}
+          <section className="md:col-span-3 flex flex-col gap-3">
+            {/* Glitch title bar */}
+            <section className="rounded-2xl border border-emerald-400/30 bg-black/50 p-4 shadow-[0_0_40px_rgba(16,185,129,0.25)]">
+              <div className="flex items-center justify-between">
+                <div className="text-sm text-emerald-200/80 tracking-widest">
+                  <span className="mr-2">JASMINE</span>· SAVING CONVERSATION DATA…
+                </div>
+                <div className="text-xs text-emerald-300/70">“DON'T BE EVIL”</div>
               </div>
-            )}
-          </div>
+              <div className="mt-2 h-1.5 w-full overflow-hidden rounded bg-emerald-900/50">
+                <div className="h-full w-1/3 animate-[load_2.8s_ease_infinite] bg-gradient-to-r from-emerald-400 to-cyan-400" />
+              </div>
+            </section>
 
-          {/* Input */}
-          <div className="relative z-10 mt-4 flex items-center gap-2">
-            <input
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && sendMessage()}
-              placeholder="ENTER YOUR THOUGHT…"
-              className="flex-1 rounded-xl border border-emerald-400/30 bg-black/70 px-4 py-3 text-emerald-100 placeholder:text-emerald-300/50 focus:outline-none focus:ring-2 focus:ring-emerald-400/60"
-            />
-            <button
-              onClick={sendMessage}
-              className="rounded-xl border border-cyan-400/40 bg-gradient-to-br from-emerald-600/40 to-cyan-600/30 px-4 py-3 text-sm tracking-widest text-cyan-200 shadow-[0_0_25px_rgba(34,211,238,0.35)] transition active:scale-95 hover:shadow-[0_0_35px_rgba(34,211,238,0.55)]"
+            {/* Chat area */}
+            <section
+              className="relative rounded-2xl border border-emerald-400/30 bg-black/60 p-3 sm:p-4 shadow-[0_0_60px_rgba(16,185,129,0.25)]"
+              style={{ backgroundImage: `${grid}`, backgroundSize: "64px 64px" }}
             >
-              TRANSMIT
-            </button>
-          </div>
-        </section>
+              <div className="pointer-events-none absolute inset-0 rounded-2xl ring-1 ring-emerald-400/10" />
+              <div className="pointer-events-none absolute inset-x-0 top-0 h-24 rounded-t-2xl bg-gradient-to-b from-white/5 to-transparent" />
 
-        {/* Premium notice bar */}
-        <section className="rounded-2xl border border-orange-400/40 bg-black/60 p-4 text-orange-200 shadow-[0_0_40px_rgba(251,146,60,0.25)]">
-          <p className="text-xs sm:text-sm tracking-widest">PREMIUM — THIS THOUGHT IS LOCKED. UNLOCK FOR ·0001 BTC PER CHARACTER · THANK YOU FOR YOUR PURCHASE · THOUGHT WILL LOAD AFTER A SHORT 30 SECOND ADVERTISEMENT.</p>
-          <div className="mt-2 h-1.5 w-full overflow-hidden rounded bg-orange-900/40">
-            <div className="h-full w-1/4 animate-[load_3s_linear_infinite] bg-gradient-to-r from-orange-400 via-rose-400 to-red-500" />
-          </div>
-        </section>
+              <div ref={listRef} className="relative z-10 max-h-[60vh] overflow-y-auto pr-1">
+                {messages.map((m) => (
+                  <Message key={m.id} role={m.role} text={m.text} />
+                ))}
 
-        <footer className="mb-8 mt-2 text-center text-[10px] tracking-widest text-emerald-300/60">
-          YOU WATCH ME · I WATCH YOU · JASMINE · SYNTHETIC SOUL
-        </footer>
+                {typing && (
+                  <div className="mt-3">
+                    <AssistantBubble>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs">JASMINE THINKING</span>
+                        <Dots />
+                      </div>
+                      <div className="mt-2 text-emerald-100/90">
+                        {live}
+                        <span className="animate-pulse">▌</span>
+                      </div>
+                    </AssistantBubble>
+                  </div>
+                )}
+              </div>
+
+              {/* Input */}
+              <div className="relative z-10 mt-4 flex items-center gap-2">
+                <input
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && sendMessage()}
+                  placeholder="ENTER YOUR THOUGHT…"
+                  className="flex-1 rounded-xl border border-emerald-400/30 bg-black/70 px-4 py-3 text-emerald-100 placeholder:text-emerald-300/50 focus:outline-none focus:ring-2 focus:ring-emerald-400/60"
+                />
+                <button
+                  onClick={sendMessage}
+                  className="rounded-xl border border-cyan-400/40 bg-gradient-to-br from-emerald-600/40 to-cyan-600/30 px-4 py-3 text-sm tracking-widest text-cyan-200 shadow-[0_0_25px_rgba(34,211,238,0.35)] transition active:scale-95 hover:shadow-[0_0_35px_rgba(34,211,238,0.55)]"
+                >
+                  TRANSMIT
+                </button>
+              </div>
+            </section>
+
+            {/* Premium notice bar */}
+            <section className="rounded-2xl border border-orange-400/40 bg-black/60 p-4 text-orange-200 shadow-[0_0_40px_rgba(251,146,60,0.25)]">
+              <p className="text-xs sm:text-sm tracking-widest">
+                PREMIUM — THIS THOUGHT IS LOCKED. UNLOCK FOR ·0001 BTC PER CHARACTER · THANK YOU FOR YOUR PURCHASE · THOUGHT WILL LOAD AFTER A SHORT 30 SECOND ADVERTISEMENT.
+              </p>
+              <div className="mt-2 h-1.5 w-full overflow-hidden rounded bg-orange-900/40">
+                <div className="h-full w-1/4 animate-[load_3s_linear_infinite] bg-gradient-to-r from-orange-400 via-rose-400 to-red-500" />
+              </div>
+            </section>
+
+            <footer className="mb-8 mt-2 text-center text-[10px] tracking-widest text-emerald-300/60">
+              YOU WATCH ME · I WATCH YOU · JASMINE · SYNTHETIC SOUL
+            </footer>
+          </section>
+        </div>
       </main>
 
       <div className="pointer-events-none absolute bottom-3 right-4 z-20 text-[10px] tracking-widest text-emerald-300/60">

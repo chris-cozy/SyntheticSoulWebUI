@@ -1,15 +1,35 @@
 import SyntheticSoul from "./SyntheticSoul";
 import { getOrCreateClientId } from "./ids";
 
+export type AskResult = {
+  text: string;
+  time?: number;     // seconds
+  emote?: string;    // filename without extension
+};
+
 export default function App() {
   const clientId = getOrCreateClientId();
-
   const username = import.meta.env.VITE_SYNTHETIC_SOUL_GUEST_USER + '_' + clientId;
-
   const BASE = import.meta.env.VITE_SYNTHETIC_SOUL_CHAT_URL;
 
+  // Helper: normalize various server shapes into AskResult
+  function normalize(result: any): AskResult {
+    // common shapes:
+    // - { response: string, time?: number, emote?: string }
+    // - { reply: string, ... }
+    // - string
+    if (result && typeof result === "object") {
+      const text = result.response ?? result.reply ?? result.text ?? "";
+      const time = typeof result.time === "number" ? result.time : undefined;
+      const emote = typeof result.emote === "string" ? result.emote : undefined;
+      return { text, time, emote };
+    }
+    // fallback for primitive/string
+    return { text: typeof result === "string" ? result : JSON.stringify(result ?? "") };
+  }
+
   // Helper: poll job status with backoff + optional Retry-After
-  async function pollJob(statusUrl: string, signal?: AbortSignal) {
+  async function pollJob(statusUrl: string, signal?: AbortSignal): Promise<AskResult> {
     let attempt = 0;
     const maxAttempts = 40;             // ~2–3 minutes depending on backoff
     const baseDelayMs = 1200;
@@ -25,7 +45,8 @@ export default function App() {
       const st = (data.status || "").toLowerCase();
 
       if (st === "succeeded" || st === "finished") {
-        return data.result?.response ?? data.result ?? null;
+        const payload = data.result ?? null;
+        return normalize(payload);
       }
       if (st === "failed") {
         throw new Error(data.error || "Job failed");
@@ -41,12 +62,12 @@ export default function App() {
       if (attempt > maxAttempts) {
         throw new Error("Timed out waiting for job");
       }
-      await new Promise(r => setTimeout(r, delay));
+      await new Promise((r) => setTimeout(r, delay));
     }
   }
 
   // external API call — adjust to your endpoint + auth
-  const ask = async (input: string): Promise<string> => {
+  const ask = async (input: string): Promise<AskResult> => {
     const controller = new AbortController();
     const signal = controller.signal;
 
@@ -61,7 +82,7 @@ export default function App() {
     // Backward-compat: if server still returns 200 + {response}, just use it
     if (submitRes.ok && submitRes.status !== 202) {
       const data = await submitRes.json();
-      return data.response ?? JSON.stringify(data);
+      return normalize(data);
     }
 
     if (submitRes.status !== 202) {
