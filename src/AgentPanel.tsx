@@ -1,5 +1,5 @@
 // src/AgentPanel.tsx
-import React, { useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 
 type Props = {
   emote?: string;       // e.g. "happy"
