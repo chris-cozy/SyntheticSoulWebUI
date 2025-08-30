@@ -37,7 +37,7 @@ export default function SyntheticSoul({
   const [live, setLive] = useState("");
   const listRef = useRef<HTMLDivElement | null>(null);
 
-  const [lastEmote, setLastEmote] = useState<string | undefined>(undefined);
+  const [lastExpression, setLastExpression] = useState<string | undefined>(undefined);
   const [lastLatency, setLastLatency] = useState<number | undefined>(undefined);
 
   useEffect(() => {
@@ -64,7 +64,7 @@ export default function SyntheticSoul({
         result = await onAsk(trimmed);
       } else {
         // fallback for dev
-        result = { text: "ACK (demo)", time: Math.random() * 1.5 + 0.2, emote: "neutral" };
+        result = { text: "ACK (demo)", time: Math.random() * 1.5 + 0.2, expression: "neutral" };
       }
 
       // Update assistant message text
@@ -82,7 +82,7 @@ export default function SyntheticSoul({
       }
 
       // Update panel fields
-      setLastEmote(result.emote);
+      setLastExpression(result.expression);
       setLastLatency(result.time);
       
     } catch (err: any) {
@@ -153,7 +153,7 @@ export default function SyntheticSoul({
           {/* LEFT: Agent panel (sticky) */}
           <aside className="md:col-span-2">
             <div className="sticky top-24">
-              <AgentPanel emote={lastEmote} lastLatency={lastLatency} />
+              <AgentPanel expression={lastExpression} lastLatency={lastLatency} />
             </div>
           </aside>
 

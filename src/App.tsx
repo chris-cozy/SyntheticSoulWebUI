@@ -4,7 +4,7 @@ import { getOrCreateClientId } from "./ids";
 export type AskResult = {
   text: string;
   time?: number;     // seconds
-  emote?: string;    // filename without extension
+  expression?: string;    // filename without extension
 };
 
 export default function App() {
@@ -15,14 +15,14 @@ export default function App() {
   // Helper: normalize various server shapes into AskResult
   function normalize(result: any): AskResult {
     // common shapes:
-    // - { response: string, time?: number, emote?: string }
+    // - { response: string, time?: number, expression?: string }
     // - { reply: string, ... }
     // - string
     if (result && typeof result === "object") {
       const text = result.response ?? result.reply ?? result.text ?? "";
       const time = typeof result.time === "number" ? result.time : undefined;
-      const emote = typeof result.emote === "string" ? result.emote : undefined;
-      return { text, time, emote };
+      const expression = typeof result.expression === "string" ? result.expression : undefined;
+      return { text, time, expression };
     }
     // fallback for primitive/string
     return { text: typeof result === "string" ? result : JSON.stringify(result ?? "") };
@@ -98,7 +98,7 @@ export default function App() {
     const locHeader = submitRes.headers.get("Location"); // e.g., /jobs/<id>
     const statusUrl = locHeader?.startsWith("http")
       ? locHeader
-      : `${(new URL(BASE, window.location.origin)).origin}${locHeader || `/jobs/${job_id}`}`;
+      : `${(new URL(BASE, window.location.origin)).origin}${locHeader || `/v1/jobs/${job_id}`}`;
 
     // 3) Poll until done
     return await pollJob(statusUrl, signal);
