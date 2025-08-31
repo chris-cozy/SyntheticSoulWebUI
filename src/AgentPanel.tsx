@@ -1,18 +1,28 @@
 // src/AgentPanel.tsx
 import { useMemo, useRef, useState } from "react";
+import NeonRadar from "./NeonRadar";
+import NeonEmotionRadar from "./NeonEmotionRadar";
+
+/* ---------- Types ---------- */
+type ScalarDim = { description?: string; value: number; min?: number; max?: number };
+type PersonalityMatrix = Record<string, ScalarDim>;
+type EmotionMatrix = Record<string, ScalarDim>;
 
 type Props = {
   expression?: string;       // e.g. "happy"
   lastLatency?: number; // seconds
+  mbti?: string;              // e.g., "ISFP"
+  identity?: string;          // short sentence is best here
+  personality?: PersonalityMatrix;
+  emotions?: EmotionMatrix;
+  agentLoaded?: boolean;
 };
 
+/* ---------- Emote loader (public/emotes/*, multi-ext, cached) ---------- */
 const DEFAULT_EXPRESSION = "neutral";
 const EXT_ORDER = ["jpg"] as const;
-
-// Cache which extension worked for a given emote name
 const expressionExtCache = new Map<string, string>();
 
-// Build URL for an emote + ext
 function expressionUrl(name: string, ext: string) {
   return `/expressions/${name}.${ext}`;
 }
@@ -78,22 +88,147 @@ function ExpressionImage({ name }: { name: string }) {
   );
 }
 
-export default function AgentPanel({ expression, lastLatency }: Props) {
+/* ---------- Visual atoms ---------- */
+function pct(val: number, min = 0, max = 100) {
+  const v = Math.max(min, Math.min(max, val ?? 0));
+  return ((v - min) / (max - min || 1)) * 100;
+}
+
+function GlowDot({ value, color = "emerald" }: { value: number; color?: "emerald" | "rose" | "sky" | "amber" }) {
+  const on = value >= 60;
+  const palette =
+    color === "rose" ? (on ? "bg-rose-400" : "bg-rose-900/50") :
+    color === "sky"  ? (on ? "bg-sky-400"  : "bg-sky-900/50")  :
+    color === "amber"? (on ? "bg-amber-400": "bg-amber-900/50") :
+                       (on ? "bg-emerald-400" : "bg-emerald-900/50");
+  return <span className={`inline-block h-2 w-2 rounded-full ${palette} ${on ? "animate-pulse" : ""}`} />;
+}
+
+/* Gradient class for personality bars */
+const P_BAR = "bg-gradient-to-r from-emerald-400 via-cyan-400 to-emerald-600";
+
+/* Emotion → gradient + indicator color */
+function emotionStyle(label: string) {
+  const k = label.toLowerCase();
+  if (k === "joy" || k === "love")       return { grad: "from-emerald-400 to-cyan-400", dot: "emerald" as const };
+  if (k === "anger" || k === "disgust")  return { grad: "from-rose-500 to-red-600",      dot: "rose" as const };
+  if (k === "fear"  || k === "sadness")  return { grad: "from-sky-400 to-indigo-500",    dot: "sky"  as const };
+  if (k === "surprise")                  return { grad: "from-amber-400 to-orange-500",  dot: "amber" as const };
+  return { grad: "from-emerald-400 to-cyan-400", dot: "emerald" as const };
+}
+
+/* Row renderers */
+function PersonalityRow({ label, dim }: { label: string; dim: ScalarDim }) {
+  const value = Math.round(dim.value ?? 0);
+  const width = `${pct(dim.value, dim.min, dim.max)}%`;
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="flex items-center justify-between text-[10px] font-mono uppercase tracking-widest text-emerald-300/80">
+        <div className="flex items-center gap-2">
+          <GlowDot value={value} />
+          <span className="truncate">{label.replace(/_/g, " ")}</span>
+        </div>
+        <span className="text-emerald-400/70 tabular-nums">{value}</span>
+      </div>
+      <div className="h-2 w-full overflow-hidden rounded bg-emerald-900/30">
+        <div
+          className={`h-2 rounded ${P_BAR} [animation:barflow_3s_ease-in-out_infinite]`}
+          style={{ width }}
+          title={dim.description || ""}
+        />
+      </div>
+    </div>
+  );
+}
+
+/* Group personality by theme for readability */
+function groupPersonality(p?: PersonalityMatrix) {
+  if (!p) return [];
+  const pick = (keys: string[]) =>
+    keys.filter((k) => k in p).map((k) => [k, p[k]!] as const);
+
+  return [
+    { title: "Relational Traits", items: pick(["warmth", "empathy_compassion", "trust_reliability"]) },
+    { title: "Drive / Agency",   items: pick(["assertiveness_confidence", "adaptability", "discipline_responsibility"]) },
+    { title: "Stability",        items: pick(["emotional_stability", "perspective"]) },
+    { title: "Play & Curiosity", items: pick(["playfulness", "curiosity_creativity"]) },
+    // any remaining keys (future-proof)
+    { title: "Other",            items: Object.entries(p).filter(([k]) =>
+        !["warmth","empathy_compassion","trust_reliability",
+          "assertiveness_confidence","adaptability","discipline_responsibility",
+          "emotional_stability","perspective","playfulness","curiosity_creativity"
+        ].includes(k))
+    },
+  ].filter((g) => g.items.length);
+}
+
+function EmotionRow({ label, dim }: { label: string; dim: ScalarDim }) {
+  const value = Math.round(dim.value ?? 0);
+  const width = `${pct(dim.value, dim.min, dim.max)}%`;
+  const { grad, dot } = emotionStyle(label);
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="flex items-center justify-between text-[10px] font-mono uppercase tracking-widest text-emerald-300/80">
+        <div className="flex items-center gap-2">
+          <GlowDot value={value} color={dot} />
+          <span className="truncate">{label}</span>
+        </div>
+        <span className="text-emerald-400/70 tabular-nums">{value}</span>
+      </div>
+      <div className="h-2 w-full overflow-hidden rounded bg-emerald-900/30">
+        <div
+          className={`h-2 rounded bg-gradient-to-r ${grad} [animation:barflow_3s_ease-in-out_infinite]`}
+          style={{ width }}
+          title={dim.description || ""}
+        />
+      </div>
+    </div>
+  );
+}
+
+/* ---------- Panel ---------- */
+export default function AgentPanel({ 
+  expression, 
+  lastLatency,
+  mbti,
+  identity,
+  personality,
+  emotions,
+  agentLoaded 
+}: Props) {
   // Decide which expression name to attempt (prefer provided, fallback to default)
   const name = expression && expression.trim() ? expression : DEFAULT_EXPRESSION;
-  console.log(expression)
+  const groups = useMemo(() => groupPersonality(personality), [personality]);
+
+  const [view, setViewState] = useState<"bars" | "radar">(
+    (localStorage.getItem("agentPanel.view") as "bars" | "radar") || "bars"
+  );
+
+  const setView = (v: "bars" | "radar") => {
+    setViewState(v);
+    localStorage.setItem("agentPanel.view", v);
+  }
+
+  const [emoView, setEmoViewState] = useState<"bars"|"radar">(
+    (localStorage.getItem("agentPanel.emoView") as any) || "bars"
+  );
+
+  const setEmoView = (v: "bars"|"radar") => {
+    setEmoViewState(v);
+    localStorage.setItem("agentPanel.emoView", v);
+  };
 
   return (
     <div className="relative overflow-hidden rounded-2xl border border-emerald-500/25 bg-gradient-to-b from-emerald-950/40 to-black/70 shadow-2xl">
       {/* Header */}
       <div className="flex items-center justify-between border-b border-emerald-700/20 px-3 py-2 text-[10px] uppercase tracking-widest text-emerald-300">
-        <span>agent status</span>
+        <span>{agentLoaded ? "agent online" : "agent offline"}</span>
         <span className="text-emerald-400/70">
           {lastLatency != null ? `${lastLatency.toFixed(2)}s` : "—"}
         </span>
       </div>
 
-      {/* Emote */}
+      {/* Expression */}
       <div className="relative aspect-[4/3] w-full overflow-hidden">
         <ExpressionImage name={name} />
 
@@ -108,15 +243,145 @@ export default function AgentPanel({ expression, lastLatency }: Props) {
         />
       </div>
 
-      {/* Footer badges */}
-      <div className="flex items-center gap-2 px-3 py-2 text-[10px] tracking-widest">
-        <span className="rounded bg-emerald-900/30 px-2 py-0.5 text-emerald-300">
-          cortex link: ok
-        </span>
-        <span className="rounded bg-emerald-900/30 px-2 py-0.5 text-emerald-300">
-          expression: {expression ?? "—"}
-        </span>
+      {/* Identity / MBTI badges */}
+      <div className="flex flex-col gap-1 px-3 py-2">
+        <div className="flex flex-wrap items-center gap-2 text-[10px] tracking-widest">
+          {mbti && <span className="rounded bg-emerald-900/30 px-2 py-0.5 text-emerald-300">mbti: {mbti}</span>}
+          {name && <span className="rounded bg-emerald-900/30 px-2 py-0.5 text-emerald-300">expression: {name}</span>}
+        </div>
+        {identity && (
+          <div className="rounded border border-emerald-600/20 bg-black/40 p-2 text-[10px] leading-relaxed text-emerald-200/80">
+            {identity}
+          </div>
+        )}
       </div>
+
+      {/* Personality (grouped, collapsible) */}
+      {groups.length > 0 && (
+        <div className="px-3 pb-3">
+          {/* header above already replaced with toggle */}
+          <div className="mb-1 flex items-center justify-between text-[10px] uppercase tracking-widest text-emerald-400/80">
+            <span>personality matrix</span>
+            <div className="flex overflow-hidden rounded border border-emerald-700/30">
+              <button
+                className={`px-2 py-0.5 ${view === "bars" ? "bg-emerald-900/40 text-emerald-200" : "text-emerald-300/70"}`}
+                onClick={() => setView("bars")}
+              >
+                bars
+              </button>
+              <button
+                className={`px-2 py-0.5 border-l border-emerald-700/30 ${view === "radar" ? "bg-emerald-900/40 text-emerald-200" : "text-emerald-300/70"}`}
+                onClick={() => setView("radar")}
+              >
+                radar
+              </button>
+            </div>
+          </div>
+          {view === "radar" ? (
+          // RADAR VIEW (flat list → chart)
+          <NeonRadar
+            title="personality"
+            dims={Object.entries(personality || {}).map(([k, v]) => ({
+              label: k,
+              value: v?.value ?? 0,
+              min: v?.min,
+              max: v?.max,
+            }))}
+          />
+        ) : (
+          // BARS VIEW (grouped + collapsible)
+          <div className="flex flex-col gap-2 mt-2">
+            {groups.map((g, i) => (
+              <details key={i} open className="rounded-lg border border-emerald-700/20 bg-black/30 p-2">
+                <summary className="cursor-pointer select-none text-[10px] font-mono uppercase tracking-widest text-emerald-300/80">
+                  {g.title}
+                </summary>
+                <div className="mt-2 grid grid-cols-1 gap-2">
+                  {g.items.map(([k, v]) => <PersonalityRow key={k} label={k} dim={v} />)}
+                </div>
+              </details>
+            ))}
+          </div>
+        )}
+        </div>
+      )}
+
+      {/* Emotional Status (heat-mapped) */}
+      {emotions && (
+        <div className="px-3 pb-3">
+          <div className="mb-1 flex items-center justify-between text-[10px] uppercase tracking-widest text-emerald-400/80">
+            <span>emotional status</span>
+            <div className="flex overflow-hidden rounded border border-emerald-700/30">
+              <button
+                className={`px-2 py-0.5 ${emoView === "bars" ? "bg-emerald-900/40 text-emerald-200" : "text-emerald-300/70"}`}
+                onClick={() => setEmoView("bars")}
+              >
+                bars
+              </button>
+              <button
+                className={`px-2 py-0.5 border-l border-emerald-700/30 ${emoView === "radar" ? "bg-emerald-900/40 text-emerald-200" : "text-emerald-300/70"}`}
+                onClick={() => setEmoView("radar")}
+              >
+                radar
+              </button>
+            </div>
+          </div>
+
+          {emoView === "radar" ? (
+            <NeonEmotionRadar
+              title="emotions"
+              // supply in a nice fixed order for readability
+              dims={[
+                "joy",
+                "love",
+                "surprise",
+                "anger",
+                "fear",
+                "sadness",
+                "disgust",
+              ]
+                .filter((k) => k in emotions)
+                .map((k) => ({
+                  label: k,
+                  value: emotions[k]?.value ?? 0,
+                  min: emotions[k]?.min,
+                  max: emotions[k]?.max,
+                }))}
+            />
+          ) : (
+            <div className="grid grid-cols-1 gap-2 mt-2">
+              {Object.entries(emotions).map(([k, v]) => (
+                <EmotionRow key={k} label={k} dim={v} />
+              ))}
+            </div>
+          )}
+          <div className="mt-2 flex flex-wrap gap-2 text-[9px] font-mono uppercase tracking-widest">
+            {[
+              { label: "joy", color: "bg-emerald-400" },
+              { label: "love", color: "bg-cyan-400" },
+              { label: "surprise", color: "bg-amber-400" },
+              { label: "anger", color: "bg-red-500" },
+              { label: "disgust", color: "bg-rose-500" },
+              { label: "fear", color: "bg-sky-400" },
+              { label: "sadness", color: "bg-indigo-500" },
+            ].map((emo) => (
+              <div key={emo.label} className="flex items-center gap-1 text-emerald-300/70">
+                <span className={`h-2 w-2 rounded-full ${emo.color}`} />
+                {emo.label}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Local keyframes for barflow */}
+      <style>{`
+        @keyframes barflow { 
+          0% { filter: drop-shadow(0 0 0 rgba(16,185,129,0.0)); }
+          50% { filter: drop-shadow(0 0 6px rgba(34,211,238,0.45)); }
+          100% { filter: drop-shadow(0 0 0 rgba(16,185,129,0.0)); }
+        }
+      `}</style>
     </div>
   );
 }

@@ -7,10 +7,11 @@ export type AskResult = {
   expression?: string;    // filename without extension
 };
 
+const AGENT_API_BASE = import.meta.env.VITE_SYNTHETIC_SOUL_BASE_URL || "";
+
 export default function App() {
   const clientId = getOrCreateClientId();
   const username = import.meta.env.VITE_SYNTHETIC_SOUL_GUEST_USER + '_' + clientId;
-  const BASE = import.meta.env.VITE_SYNTHETIC_SOUL_CHAT_URL;
 
   // Helper: normalize various server shapes into AskResult
   function normalize(result: any): AskResult {
@@ -72,7 +73,7 @@ export default function App() {
     const signal = controller.signal;
 
     // 1) Kick off the job
-    const submitRes = await fetch(`${BASE}`, {
+    const submitRes = await fetch(`${AGENT_API_BASE}/messages/submit`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ message: input, username, type: import.meta.env.VITE_SYNTHETIC_SOUL_DM_TYPE }),
@@ -98,7 +99,7 @@ export default function App() {
     const locHeader = submitRes.headers.get("Location"); // e.g., /jobs/<id>
     const statusUrl = locHeader?.startsWith("http")
       ? locHeader
-      : `${(new URL(BASE, window.location.origin)).origin}${locHeader || `/v1/jobs/${job_id}`}`;
+      : `${AGENT_API_BASE}/jobs/${job_id}`;
 
     // 3) Poll until done
     return await pollJob(statusUrl, signal);

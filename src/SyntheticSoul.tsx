@@ -3,10 +3,11 @@ import { getOrCreateClientId } from "./ids";
 import AgentPanel from "./AgentPanel";
 import type { AskResult } from "./App";
 
-// Retro-84 Chatbot UI — API-ready version
-// - Accepts an optional `onAsk` prop that returns a Promise<string>
-// - If `onAsk` is omitted, a playful local mock reply is used
-// - Keep this file as src/components/Retro84Chatbot.tsx
+type ScalarDim = { description?: string; value: number; min?: number; max?: number };
+type PersonalityMatrix = Record<string, ScalarDim>;
+type EmotionMatrix = Record<string, ScalarDim>;
+
+const AGENT_API_BASE = import.meta.env.VITE_SYNTHETIC_SOUL_BASE_URL || "";
 
 export default function SyntheticSoul({
   onAsk,
@@ -37,8 +38,76 @@ export default function SyntheticSoul({
   const [live, setLive] = useState("");
   const listRef = useRef<HTMLDivElement | null>(null);
 
+  const [agentMBTI, setAgentMBTI] = useState<string | undefined>(undefined);
+  const [agentIdentity, setAgentIdentity] = useState<string | undefined>(undefined);
+  const [personality, setPersonality] = useState<PersonalityMatrix | undefined>(undefined);
+  const [emotions, setEmotions] = useState<EmotionMatrix | undefined>(undefined);
+  const [latestThought, setLatestThought] = useState<string>("");
+  const [agentLoaded, setAgentLoaded] = useState(false);
+  const [agentError, setAgentError] = useState<string | null>(null);
+
   const [lastExpression, setLastExpression] = useState<string | undefined>(undefined);
   const [lastLatency, setLastLatency] = useState<number | undefined>(undefined);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function fetchAgent() {
+      try {
+        setAgentError(null);
+
+        // Build URL safely whether the base is present or not
+        const base = AGENT_API_BASE.toString().replace(/\/+$/, "");
+        const url = `${base}/agents/active`.replace(/^\/+/, "/"); // if base is "", becomes "/v1/agents/active"
+
+        const res = await fetch(`${url}`, {
+          headers: { Accept: "application/json" },
+        });
+        if (!res.ok) throw new Error(`Agent fetch ${res.status}`);
+        const data = await res.json();
+
+        if (cancelled) return;
+
+        // Pull fields
+        const agent = data?.agent;
+        const mbti = agent?.personality?.["myers-briggs"] || agent?.personality?.myersBriggs || agent?.personality?.mbti;
+        const idText = agent?.identity as string | undefined;
+
+        const pMatrix: PersonalityMatrix | undefined = agent?.personality?.personality_matrix;
+        const eMatrix: EmotionMatrix | undefined = agent?.emotional_status?.emotions;
+
+        // newest thought by timestamp
+        const thoughts: { thought: string; timestamp?: string }[] = agent?.thoughts || [];
+        let newest = "";
+        if (thoughts.length) {
+          thoughts.sort((a, b) => (new Date(b.timestamp || 0).getTime() - new Date(a.timestamp || 0).getTime()));
+          newest = thoughts[0]?.thought || "";
+        }
+        if (!newest) {
+          // fallback to emotional_status.reason if present
+          newest = agent?.emotional_status?.reason || "";
+        }
+
+        setAgentMBTI(mbti);
+        setAgentIdentity(idText);
+        setPersonality(pMatrix);
+        setEmotions(eMatrix);
+        setLatestThought(newest || "No recent thought.");
+        setAgentLoaded(true);
+      } catch (err: any) {
+        console.warn("Agent fetch failed:", err);
+        if (cancelled) return;
+        setAgentError(err?.message || "Failed to fetch agent");
+        setAgentLoaded(true);
+      }
+    }
+
+    fetchAgent();
+
+    // poll every 3 minutes (tweak as desired)
+    const id = setInterval(fetchAgent, 1 * 60 * 1000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, []);
 
   useEffect(() => {
     listRef.current?.scrollTo({
@@ -145,15 +214,22 @@ export default function SyntheticSoul({
           </div>
         </div>
       </header>
-        
-      
+
       {/* Content panel */}
       <main className="relative z-20 mx-auto mt-6 max-w-5xl px-3 sm:px-4">
         <div className="grid grid-cols-1 gap-3 md:grid-cols-5 md:gap-6">
           {/* LEFT: Agent panel (sticky) */}
           <aside className="md:col-span-2">
             <div className="sticky top-24">
-              <AgentPanel expression={lastExpression} lastLatency={lastLatency} />
+              <AgentPanel 
+              expression={lastExpression} 
+              lastLatency={lastLatency}
+              mbti={agentMBTI}
+              identity={agentIdentity}
+              personality={personality}
+              emotions={emotions}
+              agentLoaded={agentLoaded} 
+              />
             </div>
           </aside>
 
@@ -222,7 +298,7 @@ export default function SyntheticSoul({
             {/* Premium notice bar */}
             <section className="rounded-2xl border border-orange-400/40 bg-black/60 p-4 text-orange-200 shadow-[0_0_40px_rgba(251,146,60,0.25)]">
               <p className="text-xs sm:text-sm tracking-widest">
-                PREMIUM — THIS THOUGHT IS LOCKED. UNLOCK FOR ·0001 BTC PER CHARACTER · THANK YOU FOR YOUR PURCHASE · THOUGHT WILL LOAD AFTER A SHORT 30 SECOND ADVERTISEMENT.
+                PREMIUM THOUGHT — {latestThought || "No recent thought."}
               </p>
               <div className="mt-2 h-1.5 w-full overflow-hidden rounded bg-orange-900/40">
                 <div className="h-full w-1/4 animate-[load_3s_linear_infinite] bg-gradient-to-r from-orange-400 via-rose-400 to-red-500" />
