@@ -7,7 +7,7 @@ type Props = {
 };
 
 const DEFAULT_EXPRESSION = "neutral";
-const EXT_ORDER = ["png", "jpg", "jpeg", "webp", "svg"] as const;
+const EXT_ORDER = ["jpg"] as const;
 
 // Cache which extension worked for a given emote name
 const expressionExtCache = new Map<string, string>();
