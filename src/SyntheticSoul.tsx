@@ -214,15 +214,7 @@ export default function SyntheticSoul({
           </div>
         </div>
       </header>
-      <div className="mx-auto max-w-5xl px-3 sm:px-4 mt-2">
-        <div className="text-[10px] uppercase tracking-widest">
-          <span className={`rounded px-2 py-0.5 ${agentError ? "bg-red-900/40 text-red-300" : "bg-emerald-900/30 text-emerald-300"}`}>
-            {agentLoaded ? (agentError ? `agent error: ${agentError}` : "agent online") : "loading agent…"}
-          </span>
-        </div>
-      </div>
-        
-      
+
       {/* Content panel */}
       <main className="relative z-20 mx-auto mt-6 max-w-5xl px-3 sm:px-4">
         <div className="grid grid-cols-1 gap-3 md:grid-cols-5 md:gap-6">
@@ -235,7 +227,8 @@ export default function SyntheticSoul({
               mbti={agentMBTI}
               identity={agentIdentity}
               personality={personality}
-              emotions={emotions} 
+              emotions={emotions}
+              agentLoaded={agentLoaded} 
               />
             </div>
           </aside>
