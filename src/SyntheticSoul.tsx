@@ -44,7 +44,6 @@ export default function SyntheticSoul({
   const [emotions, setEmotions] = useState<EmotionMatrix | undefined>(undefined);
   const [latestThought, setLatestThought] = useState<string>("");
   const [agentLoaded, setAgentLoaded] = useState(false);
-  const [agentError, setAgentError] = useState<string | null>(null);
 
   const [lastExpression, setLastExpression] = useState<string | undefined>(undefined);
   const [lastLatency, setLastLatency] = useState<number | undefined>(undefined);
@@ -54,8 +53,6 @@ export default function SyntheticSoul({
 
     async function fetchAgent() {
       try {
-        setAgentError(null);
-
         // Build URL safely whether the base is present or not
         const base = AGENT_API_BASE.toString().replace(/\/+$/, "");
         const url = `${base}/agents/active`.replace(/^\/+/, "/"); // if base is "", becomes "/v1/agents/active"
@@ -97,7 +94,6 @@ export default function SyntheticSoul({
       } catch (err: any) {
         console.warn("Agent fetch failed:", err);
         if (cancelled) return;
-        setAgentError(err?.message || "Failed to fetch agent");
         setAgentLoaded(true);
       }
     }
