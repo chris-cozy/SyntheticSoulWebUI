@@ -1,9 +1,17 @@
 // src/AgentPanel.tsx
 import { useMemo, useRef, useState } from "react";
 
+type ScalarDim = { description?: string; value: number; min?: number; max?: number };
+type PersonalityMatrix = Record<string, ScalarDim>;
+type EmotionMatrix = Record<string, ScalarDim>;
+
 type Props = {
   expression?: string;       // e.g. "happy"
   lastLatency?: number; // seconds
+  mbti?: string;              // e.g., "ISFP"
+  identity?: string;          // short sentence is best here
+  personality?: PersonalityMatrix;
+  emotions?: EmotionMatrix;
 };
 
 const DEFAULT_EXPRESSION = "neutral";
@@ -78,7 +86,37 @@ function ExpressionImage({ name }: { name: string }) {
   );
 }
 
-export default function AgentPanel({ expression, lastLatency }: Props) {
+function Row({ label, dim }: { label: string; dim: ScalarDim }) {
+  const min = dim.min ?? 0;
+  const max = dim.max ?? 100;
+  const val = Math.max(min, Math.min(max, dim.value ?? 0));
+  const pct = ((val - min) / (max - min || 1)) * 100;
+
+  return (
+    <div className="rounded-lg border border-emerald-600/20 bg-black/40 p-2">
+      <div className="flex items-center justify-between gap-2 text-[10px] text-emerald-300/80">
+        <span className="truncate">{label.replace(/_/g, " ")}</span>
+        <span className="tabular-nums">{Math.round(val)}</span>
+      </div>
+      <div className="mt-1 h-2 w-full overflow-hidden rounded bg-emerald-900/40">
+        <div
+          className="h-2 rounded bg-emerald-400/80 transition-[width]"
+          style={{ width: `${pct}%` }}
+          title={dim.description || ""}
+        />
+      </div>
+    </div>
+  );
+}
+
+export default function AgentPanel({ 
+  expression, 
+  lastLatency,
+  mbti,
+  identity,
+  personality,
+  emotions, 
+}: Props) {
   // Decide which expression name to attempt (prefer provided, fallback to default)
   const name = expression && expression.trim() ? expression : DEFAULT_EXPRESSION;
   console.log(expression)
@@ -107,6 +145,49 @@ export default function AgentPanel({ expression, lastLatency }: Props) {
           }}
         />
       </div>
+
+      {/* Identity / MBTI */}
+      <div className="flex flex-wrap items-center gap-2 px-3 py-2 text-[10px] tracking-widest">
+        {mbti && (
+          <span className="rounded bg-emerald-900/30 px-2 py-0.5 text-emerald-300">
+            mbti: {mbti}
+          </span>
+        )}
+        {identity && (
+          <span className="rounded bg-emerald-900/30 px-2 py-0.5 text-emerald-300 line-clamp-2">
+            {identity}
+          </span>
+        )}
+        <span className="rounded bg-emerald-900/30 px-2 py-0.5 text-emerald-300">expression: {expression ?? "—"}</span>
+      </div>
+
+      {/* Personality Matrix */}
+      {personality && (
+        <div className="px-3 pb-3">
+          <div className="mb-2 text-[10px] uppercase tracking-widest text-emerald-400/80">
+            personality matrix
+          </div>
+          <div className="grid grid-cols-1 gap-2">
+            {Object.entries(personality).map(([k, v]) => (
+              <Row key={k} label={k} dim={v} />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Emotional Status */}
+      {emotions && (
+        <div className="px-3 pb-3">
+          <div className="mb-2 text-[10px] uppercase tracking-widest text-emerald-400/80">
+            emotional status
+          </div>
+          <div className="grid grid-cols-1 gap-2">
+            {Object.entries(emotions).map(([k, v]) => (
+              <Row key={k} label={k} dim={v} />
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Footer badges */}
       <div className="flex items-center gap-2 px-3 py-2 text-[10px] tracking-widest">
