@@ -1,5 +1,7 @@
 // src/AgentPanel.tsx
 import { useMemo, useRef, useState } from "react";
+import NeonRadar from "./NeonRadar";
+import NeonEmotionRadar from "./NeonEmotionRadar";
 
 /* ---------- Types ---------- */
 type ScalarDim = { description?: string; value: number; min?: number; max?: number };
@@ -198,6 +200,24 @@ export default function AgentPanel({
   const name = expression && expression.trim() ? expression : DEFAULT_EXPRESSION;
   const groups = useMemo(() => groupPersonality(personality), [personality]);
 
+  const [view, setViewState] = useState<"bars" | "radar">(
+    (localStorage.getItem("agentPanel.view") as "bars" | "radar") || "bars"
+  );
+
+  const setView = (v: "bars" | "radar") => {
+    setViewState(v);
+    localStorage.setItem("agentPanel.view", v);
+  }
+
+  const [emoView, setEmoViewState] = useState<"bars"|"radar">(
+    (localStorage.getItem("agentPanel.emoView") as any) || "bars"
+  );
+
+  const setEmoView = (v: "bars"|"radar") => {
+    setEmoViewState(v);
+    localStorage.setItem("agentPanel.emoView", v);
+  };
+
   return (
     <div className="relative overflow-hidden rounded-2xl border border-emerald-500/25 bg-gradient-to-b from-emerald-950/40 to-black/70 shadow-2xl">
       {/* Header */}
@@ -239,8 +259,38 @@ export default function AgentPanel({
       {/* Personality (grouped, collapsible) */}
       {groups.length > 0 && (
         <div className="px-3 pb-3">
-          <div className="mb-1 text-[10px] uppercase tracking-widest text-emerald-400/80">personality matrix</div>
-          <div className="flex flex-col gap-2">
+          {/* header above already replaced with toggle */}
+          <div className="mb-1 flex items-center justify-between text-[10px] uppercase tracking-widest text-emerald-400/80">
+            <span>personality matrix</span>
+            <div className="flex overflow-hidden rounded border border-emerald-700/30">
+              <button
+                className={`px-2 py-0.5 ${view === "bars" ? "bg-emerald-900/40 text-emerald-200" : "text-emerald-300/70"}`}
+                onClick={() => setView("bars")}
+              >
+                bars
+              </button>
+              <button
+                className={`px-2 py-0.5 border-l border-emerald-700/30 ${view === "radar" ? "bg-emerald-900/40 text-emerald-200" : "text-emerald-300/70"}`}
+                onClick={() => setView("radar")}
+              >
+                radar
+              </button>
+            </div>
+          </div>
+          {view === "radar" ? (
+          // RADAR VIEW (flat list → chart)
+          <NeonRadar
+            title="personality"
+            dims={Object.entries(personality || {}).map(([k, v]) => ({
+              label: k,
+              value: v?.value ?? 0,
+              min: v?.min,
+              max: v?.max,
+            }))}
+          />
+        ) : (
+          // BARS VIEW (grouped + collapsible)
+          <div className="flex flex-col gap-2 mt-2">
             {groups.map((g, i) => (
               <details key={i} open className="rounded-lg border border-emerald-700/20 bg-black/30 p-2">
                 <summary className="cursor-pointer select-none text-[10px] font-mono uppercase tracking-widest text-emerald-300/80">
@@ -252,15 +302,74 @@ export default function AgentPanel({
               </details>
             ))}
           </div>
+        )}
         </div>
       )}
 
       {/* Emotional Status (heat-mapped) */}
       {emotions && (
         <div className="px-3 pb-3">
-          <div className="mb-1 text-[10px] uppercase tracking-widest text-emerald-400/80">emotional status</div>
-          <div className="grid grid-cols-1 gap-2">
-            {Object.entries(emotions).map(([k, v]) => <EmotionRow key={k} label={k} dim={v} />)}
+          <div className="mb-1 flex items-center justify-between text-[10px] uppercase tracking-widest text-emerald-400/80">
+            <span>emotional status</span>
+            <div className="flex overflow-hidden rounded border border-emerald-700/30">
+              <button
+                className={`px-2 py-0.5 ${emoView === "bars" ? "bg-emerald-900/40 text-emerald-200" : "text-emerald-300/70"}`}
+                onClick={() => setEmoView("bars")}
+              >
+                bars
+              </button>
+              <button
+                className={`px-2 py-0.5 border-l border-emerald-700/30 ${emoView === "radar" ? "bg-emerald-900/40 text-emerald-200" : "text-emerald-300/70"}`}
+                onClick={() => setEmoView("radar")}
+              >
+                radar
+              </button>
+            </div>
+          </div>
+
+          {emoView === "radar" ? (
+            <NeonEmotionRadar
+              title="emotions"
+              // supply in a nice fixed order for readability
+              dims={[
+                "joy",
+                "love",
+                "surprise",
+                "anger",
+                "fear",
+                "sadness",
+                "disgust",
+              ]
+                .filter((k) => k in emotions)
+                .map((k) => ({
+                  label: k,
+                  value: emotions[k]?.value ?? 0,
+                  min: emotions[k]?.min,
+                  max: emotions[k]?.max,
+                }))}
+            />
+          ) : (
+            <div className="grid grid-cols-1 gap-2 mt-2">
+              {Object.entries(emotions).map(([k, v]) => (
+                <EmotionRow key={k} label={k} dim={v} />
+              ))}
+            </div>
+          )}
+          <div className="mt-2 flex flex-wrap gap-2 text-[9px] font-mono uppercase tracking-widest">
+            {[
+              { label: "joy", color: "bg-emerald-400" },
+              { label: "love", color: "bg-cyan-400" },
+              { label: "surprise", color: "bg-amber-400" },
+              { label: "anger", color: "bg-red-500" },
+              { label: "disgust", color: "bg-rose-500" },
+              { label: "fear", color: "bg-sky-400" },
+              { label: "sadness", color: "bg-indigo-500" },
+            ].map((emo) => (
+              <div key={emo.label} className="flex items-center gap-1 text-emerald-300/70">
+                <span className={`h-2 w-2 rounded-full ${emo.color}`} />
+                {emo.label}
+              </div>
+            ))}
           </div>
         </div>
       )}
