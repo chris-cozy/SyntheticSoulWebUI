@@ -7,18 +7,24 @@ type ScalarDim = { description?: string; value: number; min?: number; max?: numb
 type PersonalityMatrix = Record<string, ScalarDim>;
 type EmotionMatrix = Record<string, ScalarDim>;
 
-const AGENT_API_BASE = import.meta.env.VITE_SYNTHETIC_SOUL_BASE_URL || "";
+const AGENT_API_BASE = (import.meta.env.VITE_SYNTHETIC_SOUL_BASE_URL || "")
+  .toString()
+  .replace(/\/+$/, "");;
+
+const api = (path: string) => `${AGENT_API_BASE}${path}`;
 
 export default function SyntheticSoul({
   onAsk,
   title = "JASMINE",
+  username
 }: {
   onAsk?: (input: string) => Promise<AskResult>;
   title?: string;
+  username?: string;
 }) {
   const clientId = getOrCreateClientId();
   const [messages, setMessages] = useState<
-    { id: number; role: "user" | "assistant" | "system"; text: string }[]
+    { id: number | string; role: "user" | "assistant" | "system"; text: string }[]
   >([
     {
       id: 1,
@@ -30,7 +36,7 @@ export default function SyntheticSoul({
       id: 2,
       role: "assistant",
       text:
-        "WELCOME, USER. I AM JASMINE. ALL QUERIES ARE LOGGED. WHAT THOUGHT WOULD YOU LIKE TO SHARE?",
+        "WELCOME, USER. I AM JaSMINE. WHAT THOUGHT WOULD YOU LIKE TO SHARE?",
     },
   ]);
   const [input, setInput] = useState("");
@@ -48,14 +54,55 @@ export default function SyntheticSoul({
   const [lastExpression, setLastExpression] = useState<string | undefined>(undefined);
   const [lastLatency, setLastLatency] = useState<number | undefined>(undefined);
 
+  /** Populate chat window with conversation data on page load */
+  useEffect(() => {
+    let cancelled = false;
+
+    function uniqById<T extends { id: string | number }>(arr: T[]) {
+      const seen = new Set<string | number>();
+      return arr.filter(m => (seen.has(m.id) ? false : (seen.add(m.id), true)));
+    }
+
+    async function loadConversation() {
+      if (!username) return;
+      try {
+        const res = await fetch(api(`/messages/conversation/${encodeURIComponent(username)}`), {
+          headers: { Accept: "application/json" },
+        });
+        if (!res.ok) return; // silently ignore if no history yet
+        const data = await res.json();
+        const msgs: any[] = data?.conversation?.messages || [];
+        if (!msgs.length || cancelled) return;
+
+        // sort ascending by time
+        const sorted = [...msgs].sort(
+          (a, b) =>
+            new Date(a.timestamp || 0).getTime() - new Date(b.timestamp || 0).getTime()
+        );
+
+        const mapped = sorted.map((m, i) => ({
+          id: new Date(m.timestamp || 0).getTime() || i, // stable numeric id
+          role: m.from_agent ? ("assistant" as const) : ("user" as const),
+          text: m.message ?? "",
+        }));
+  
+        // Replace initial seed with server conversation
+        setMessages(prev => uniqById([...prev, ...mapped]));
+      } catch {
+        /* ignore */
+      }
+    }
+
+    loadConversation();
+  }, [username]);
+
+  /** Populate Jasmine data */
   useEffect(() => {
     let cancelled = false;
 
     async function fetchAgent() {
       try {
-        // Build URL safely whether the base is present or not
-        const base = AGENT_API_BASE.toString().replace(/\/+$/, "");
-        const url = `${base}/agents/active`.replace(/^\/+/, "/"); // if base is "", becomes "/v1/agents/active"
+        const url = api('/agents/active');
 
         const res = await fetch(`${url}`, {
           headers: { Accept: "application/json" },
@@ -73,38 +120,51 @@ export default function SyntheticSoul({
         const pMatrix: PersonalityMatrix | undefined = agent?.personality?.personality_matrix;
         const eMatrix: EmotionMatrix | undefined = agent?.emotional_status?.emotions;
 
-        // newest thought by timestamp
-        const thoughts: { thought: string; timestamp?: string }[] = agent?.thoughts || [];
-        let newest = "";
-        if (thoughts.length) {
-          thoughts.sort((a, b) => (new Date(b.timestamp || 0).getTime() - new Date(a.timestamp || 0).getTime()));
-          newest = thoughts[0]?.thought || "";
-        }
-        if (!newest) {
-          // fallback to emotional_status.reason if present
-          newest = agent?.emotional_status?.reason || "";
-        }
-
         setAgentMBTI(mbti);
         setAgentIdentity(idText);
         setPersonality(pMatrix);
         setEmotions(eMatrix);
-        setLatestThought(newest || "No recent thought.");
         setAgentLoaded(true);
       } catch (err: any) {
         console.warn("Agent fetch failed:", err);
         if (cancelled) return;
-        setAgentLoaded(true);
+        setAgentLoaded(false);
       }
     }
 
     fetchAgent();
 
-    // poll every 3 minutes (tweak as desired)
-    const id = setInterval(fetchAgent, 1 * 60 * 1000);
+    // poll every 30 seconds (tweak as desired)
+    const id = setInterval(fetchAgent, 30 * 1000);
     return () => { cancelled = true; clearInterval(id); };
   }, []);
 
+  /** Populate Latest thought */
+  useEffect(() => {
+    let cancelled = false;
+
+    async function fetchLatestThought() {
+      try {
+        const res = await fetch(api("/thoughts/latest"), {
+          headers: { Accept: "application/json" },
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (cancelled) return;
+
+        const t = data?.latest_thought?.thought || "";
+        setLatestThought(t || "No recent thought.");
+      } catch {
+        /* ignore */
+      }
+    }
+
+    fetchLatestThought();
+    const id = setInterval(fetchLatestThought, 60 * 1000); // 🔁 1 min
+    return () => { cancelled = true; clearInterval(id); };
+  }, []);
+
+  /** Smooth scroll to most recent messages */
   useEffect(() => {
     listRef.current?.scrollTo({
       top: listRef.current.scrollHeight,
@@ -213,9 +273,9 @@ export default function SyntheticSoul({
 
       {/* Content panel */}
       <main className="relative z-20 mx-auto mt-6 max-w-5xl px-3 sm:px-4">
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-5 md:gap-6">
+        <div className="grid grid-cols-1 gap-3 lg:grid-cols-5 md:grid-cols-5 md:gap-6">
           {/* LEFT: Agent panel (sticky) */}
-          <aside className="md:col-span-2">
+          <aside className="lg:col-span-2 md:col-span-2">
             <div className="sticky top-24">
               <AgentPanel 
               expression={lastExpression} 
@@ -246,13 +306,13 @@ export default function SyntheticSoul({
 
             {/* Chat area */}
             <section
-              className="relative rounded-2xl border border-emerald-400/30 bg-black/60 p-3 sm:p-4 shadow-[0_0_60px_rgba(16,185,129,0.25)]"
+              className="relative flex min-h-[78vh] flex-col rounded-2xl border border-emerald-400/30 bg-black/60 p-3 sm:p-4 shadow-[0_0_60px_rgba(16,185,129,0.25)]"
               style={{ backgroundImage: `${grid}`, backgroundSize: "64px 64px" }}
             >
               <div className="pointer-events-none absolute inset-0 rounded-2xl ring-1 ring-emerald-400/10" />
               <div className="pointer-events-none absolute inset-x-0 top-0 h-24 rounded-t-2xl bg-gradient-to-b from-white/5 to-transparent" />
 
-              <div ref={listRef} className="relative z-10 max-h-[60vh] overflow-y-auto pr-1">
+              <div ref={listRef} className="relative z-10 flex-1 max-h-[70vh] overflow-y-auto pr-1">
                 {messages.map((m) => (
                   <Message key={m.id} role={m.role} text={m.text} />
                 ))}
@@ -274,7 +334,7 @@ export default function SyntheticSoul({
               </div>
 
               {/* Input */}
-              <div className="relative z-10 mt-4 flex items-center gap-2">
+              <div className="relative z-10 mt-8 flex items-center gap-2">
                 <input
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
