@@ -213,9 +213,9 @@ export default function SyntheticSoul({
 
       {/* Content panel */}
       <main className="relative z-20 mx-auto mt-6 max-w-5xl px-3 sm:px-4">
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-5 md:gap-6">
+        <div className="grid grid-cols-1 gap-3 lg:grid-cols-5 md:grid-cols-5 md:gap-6">
           {/* LEFT: Agent panel (sticky) */}
-          <aside className="md:col-span-2">
+          <aside className="lg:col-span-2 md:col-span-2">
             <div className="sticky top-24">
               <AgentPanel 
               expression={lastExpression} 
@@ -230,7 +230,7 @@ export default function SyntheticSoul({
           </aside>
 
           {/* RIGHT: everything you had before */}
-          <section className="md:col-span-3 flex flex-col gap-3">
+          <section className="lg:col-span-3 md:col-span-3 flex flex-col gap-3">
             {/* Glitch title bar */}
             <section className="rounded-2xl border border-emerald-400/30 bg-black/50 p-4 shadow-[0_0_40px_rgba(16,185,129,0.25)]">
               <div className="flex items-center justify-between">
@@ -246,13 +246,13 @@ export default function SyntheticSoul({
 
             {/* Chat area */}
             <section
-              className="relative rounded-2xl border border-emerald-400/30 bg-black/60 p-3 sm:p-4 shadow-[0_0_60px_rgba(16,185,129,0.25)]"
+              className="relative flex min-h-[78vh] flex-col rounded-2xl border border-emerald-400/30 bg-black/60 p-3 sm:p-4 shadow-[0_0_60px_rgba(16,185,129,0.25)]"
               style={{ backgroundImage: `${grid}`, backgroundSize: "64px 64px" }}
             >
               <div className="pointer-events-none absolute inset-0 rounded-2xl ring-1 ring-emerald-400/10" />
               <div className="pointer-events-none absolute inset-x-0 top-0 h-24 rounded-t-2xl bg-gradient-to-b from-white/5 to-transparent" />
 
-              <div ref={listRef} className="relative z-10 max-h-[60vh] overflow-y-auto pr-1">
+              <div ref={listRef} className="relative z-10 flex-1 overflow-y-auto pr-1">
                 {messages.map((m) => (
                   <Message key={m.id} role={m.role} text={m.text} />
                 ))}
