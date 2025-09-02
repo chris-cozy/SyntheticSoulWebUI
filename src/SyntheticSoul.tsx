@@ -24,7 +24,7 @@ export default function SyntheticSoul({
 }) {
   const clientId = getOrCreateClientId();
   const [messages, setMessages] = useState<
-    { id: number; role: "user" | "assistant" | "system"; text: string }[]
+    { id: number | string; role: "user" | "assistant" | "system"; text: string }[]
   >([
     {
       id: 1,
@@ -36,7 +36,7 @@ export default function SyntheticSoul({
       id: 2,
       role: "assistant",
       text:
-        "WELCOME, USER. I AM JASMINE. ALL QUERIES ARE LOGGED. WHAT THOUGHT WOULD YOU LIKE TO SHARE?",
+        "WELCOME, USER. I AM JaSMINE. WHAT THOUGHT WOULD YOU LIKE TO SHARE?",
     },
   ]);
   const [input, setInput] = useState("");
@@ -57,6 +57,12 @@ export default function SyntheticSoul({
   /** Populate chat window with conversation data on page load */
   useEffect(() => {
     let cancelled = false;
+
+    function uniqById<T extends { id: string | number }>(arr: T[]) {
+      const seen = new Set<string | number>();
+      return arr.filter(m => (seen.has(m.id) ? false : (seen.add(m.id), true)));
+    }
+
     async function loadConversation() {
       if (!username) return;
       try {
@@ -68,21 +74,29 @@ export default function SyntheticSoul({
         const msgs: any[] = data?.conversation?.messages || [];
         if (!msgs.length || cancelled) return;
 
-        const mapped = msgs.map((m, i) => ({
-          id: Date.parse(m.timestamp || "") + 2 || i,
+        // sort ascending by time
+        const sorted = [...msgs].sort(
+          (a, b) =>
+            new Date(a.timestamp || 0).getTime() - new Date(b.timestamp || 0).getTime()
+        );
+
+        const mapped = sorted.map((m, i) => ({
+          id: new Date(m.timestamp || 0).getTime() || i, // stable numeric id
           role: m.from_agent ? ("assistant" as const) : ("user" as const),
           text: m.message ?? "",
         }));
   
         // Replace initial seed with server conversation
-        setMessages((m)=>[...m, ...mapped])
+        setMessages(prev => uniqById([...prev, ...mapped]));
       } catch {
         /* ignore */
       }
     }
+
     loadConversation();
   }, [username]);
 
+  /** Populate Jasmine data */
   useEffect(() => {
     let cancelled = false;
 
