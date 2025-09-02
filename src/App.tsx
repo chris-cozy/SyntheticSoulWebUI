@@ -105,5 +105,5 @@ export default function App() {
     return await pollJob(statusUrl, signal);
   };
 
-  return <SyntheticSoul onAsk={ask} title="JASMINE" />;
+  return <SyntheticSoul onAsk={ask} title="JASMINE" username={username} />;
 }

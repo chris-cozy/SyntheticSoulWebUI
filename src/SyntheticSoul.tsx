@@ -7,14 +7,20 @@ type ScalarDim = { description?: string; value: number; min?: number; max?: numb
 type PersonalityMatrix = Record<string, ScalarDim>;
 type EmotionMatrix = Record<string, ScalarDim>;
 
-const AGENT_API_BASE = import.meta.env.VITE_SYNTHETIC_SOUL_BASE_URL || "";
+const AGENT_API_BASE = (import.meta.env.VITE_SYNTHETIC_SOUL_BASE_URL || "")
+  .toString()
+  .replace(/\/+$/, "");;
+
+const api = (path: string) => `${AGENT_API_BASE}${path}`;
 
 export default function SyntheticSoul({
   onAsk,
   title = "JASMINE",
+  username
 }: {
   onAsk?: (input: string) => Promise<AskResult>;
   title?: string;
+  username?: string;
 }) {
   const clientId = getOrCreateClientId();
   const [messages, setMessages] = useState<
@@ -50,12 +56,40 @@ export default function SyntheticSoul({
 
   useEffect(() => {
     let cancelled = false;
+    async function loadConversation() {
+      if (!username) return;
+      try {
+        const res = await fetch(api(`/messages/conversation/${encodeURIComponent(username)}`), {
+          headers: { Accept: "application/json" },
+        });
+        if (!res.ok) return; // silently ignore if no history yet
+        const data = await res.json();
+        const msgs: any[] = data?.conversation?.messages || [];
+        if (!msgs.length || cancelled) return;
+
+        const mapped = msgs.map((m, i) => ({
+          id: Date.parse(m.timestamp || "") + 2 || i,
+          role: m.from_agent ? ("assistant" as const) : ("user" as const),
+          text: m.message ?? "",
+        }));
+    
+        console.log(mapped)
+
+        // Replace initial seed with server conversation
+        setMessages(mapped);
+      } catch {
+        /* ignore */
+      }
+    }
+    loadConversation();
+  }, [username]);
+
+  useEffect(() => {
+    let cancelled = false;
 
     async function fetchAgent() {
       try {
-        // Build URL safely whether the base is present or not
-        const base = AGENT_API_BASE.toString().replace(/\/+$/, "");
-        const url = `${base}/agents/active`.replace(/^\/+/, "/"); // if base is "", becomes "/v1/agents/active"
+        const url = api('/agents/active');
 
         const res = await fetch(`${url}`, {
           headers: { Accept: "application/json" },
@@ -230,7 +264,7 @@ export default function SyntheticSoul({
           </aside>
 
           {/* RIGHT: everything you had before */}
-          <section className="lg:col-span-3 md:col-span-3 flex flex-col gap-3">
+          <section className="md:col-span-3 flex flex-col gap-3">
             {/* Glitch title bar */}
             <section className="rounded-2xl border border-emerald-400/30 bg-black/50 p-4 shadow-[0_0_40px_rgba(16,185,129,0.25)]">
               <div className="flex items-center justify-between">
@@ -252,7 +286,7 @@ export default function SyntheticSoul({
               <div className="pointer-events-none absolute inset-0 rounded-2xl ring-1 ring-emerald-400/10" />
               <div className="pointer-events-none absolute inset-x-0 top-0 h-24 rounded-t-2xl bg-gradient-to-b from-white/5 to-transparent" />
 
-              <div ref={listRef} className="relative z-10 flex-1 overflow-y-auto pr-1">
+              <div ref={listRef} className="relative z-10 flex-1 max-h-[70vh] overflow-y-auto pr-1">
                 {messages.map((m) => (
                   <Message key={m.id} role={m.role} text={m.text} />
                 ))}
@@ -274,7 +308,7 @@ export default function SyntheticSoul({
               </div>
 
               {/* Input */}
-              <div className="relative z-10 mt-4 flex items-center gap-2">
+              <div className="relative z-10 mt-8 flex items-center gap-2">
                 <input
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
