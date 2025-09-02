@@ -201,7 +201,7 @@ export default function AgentPanel({
   const groups = useMemo(() => groupPersonality(personality), [personality]);
 
   const [view, setViewState] = useState<"bars" | "radar">(
-    (localStorage.getItem("agentPanel.view") as "bars" | "radar") || "bars"
+    (localStorage.getItem("agentPanel.view") as "bars" | "radar") || "radar"
   );
 
   const setView = (v: "bars" | "radar") => {
@@ -292,7 +292,7 @@ export default function AgentPanel({
           // BARS VIEW (grouped + collapsible)
           <div className="flex flex-col gap-2 mt-2">
             {groups.map((g, i) => (
-              <details key={i} open className="rounded-lg border border-emerald-700/20 bg-black/30 p-2">
+              <details key={i} open={false} className="rounded-lg border border-emerald-700/20 bg-black/30 p-2">
                 <summary className="cursor-pointer select-none text-[10px] font-mono uppercase tracking-widest text-emerald-300/80">
                   {g.title}
                 </summary>
