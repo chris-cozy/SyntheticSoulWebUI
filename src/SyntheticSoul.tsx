@@ -120,38 +120,51 @@ export default function SyntheticSoul({
         const pMatrix: PersonalityMatrix | undefined = agent?.personality?.personality_matrix;
         const eMatrix: EmotionMatrix | undefined = agent?.emotional_status?.emotions;
 
-        // newest thought by timestamp
-        const thoughts: { thought: string; timestamp?: string }[] = agent?.thoughts || [];
-        let newest = "";
-        if (thoughts.length) {
-          thoughts.sort((a, b) => (new Date(b.timestamp || 0).getTime() - new Date(a.timestamp || 0).getTime()));
-          newest = thoughts[0]?.thought || "";
-        }
-        if (!newest) {
-          // fallback to emotional_status.reason if present
-          newest = agent?.emotional_status?.reason || "";
-        }
-
         setAgentMBTI(mbti);
         setAgentIdentity(idText);
         setPersonality(pMatrix);
         setEmotions(eMatrix);
-        setLatestThought(newest || "No recent thought.");
         setAgentLoaded(true);
       } catch (err: any) {
         console.warn("Agent fetch failed:", err);
         if (cancelled) return;
-        setAgentLoaded(true);
+        setAgentLoaded(false);
       }
     }
 
     fetchAgent();
 
-    // poll every 3 minutes (tweak as desired)
-    const id = setInterval(fetchAgent, 1 * 60 * 1000);
+    // poll every 30 seconds (tweak as desired)
+    const id = setInterval(fetchAgent, 30 * 1000);
     return () => { cancelled = true; clearInterval(id); };
   }, []);
 
+  /** Populate Latest thought */
+  useEffect(() => {
+    let cancelled = false;
+
+    async function fetchLatestThought() {
+      try {
+        const res = await fetch(api("/thoughts/latest"), {
+          headers: { Accept: "application/json" },
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (cancelled) return;
+
+        const t = data?.latest_thought?.thought || "";
+        setLatestThought(t || "No recent thought.");
+      } catch {
+        /* ignore */
+      }
+    }
+
+    fetchLatestThought();
+    const id = setInterval(fetchLatestThought, 60 * 1000); // 🔁 1 min
+    return () => { cancelled = true; clearInterval(id); };
+  }, []);
+
+  /** Smooth scroll to most recent messages */
   useEffect(() => {
     listRef.current?.scrollTo({
       top: listRef.current.scrollHeight,
