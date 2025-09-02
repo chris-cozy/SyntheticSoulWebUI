@@ -54,6 +54,7 @@ export default function SyntheticSoul({
   const [lastExpression, setLastExpression] = useState<string | undefined>(undefined);
   const [lastLatency, setLastLatency] = useState<number | undefined>(undefined);
 
+  /** Populate chat window with conversation data on page load */
   useEffect(() => {
     let cancelled = false;
     async function loadConversation() {
@@ -72,11 +73,9 @@ export default function SyntheticSoul({
           role: m.from_agent ? ("assistant" as const) : ("user" as const),
           text: m.message ?? "",
         }));
-    
-        console.log(mapped)
-
+  
         // Replace initial seed with server conversation
-        setMessages(mapped);
+        setMessages((m)=>[...m, ...mapped])
       } catch {
         /* ignore */
       }
