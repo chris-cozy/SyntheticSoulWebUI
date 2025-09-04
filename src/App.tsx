@@ -1,4 +1,6 @@
+import AuthMenu from "./AuthMenu";
 import SyntheticSoul from "./SyntheticSoul";
+import { useAuth } from "./auth";
 import { getOrCreateClientId } from "./ids";
 
 export type AskResult = {
@@ -10,8 +12,8 @@ export type AskResult = {
 const AGENT_API_BASE = import.meta.env.VITE_SYNTHETIC_SOUL_BASE_URL || "";
 
 export default function App() {
-  const clientId = getOrCreateClientId();
-  const username = import.meta.env.VITE_SYNTHETIC_SOUL_GUEST_USER + '_' + clientId;
+  const { user, token, authFetch, getAuthHeader } = useAuth();
+  const username = user?.username
 
   // Helper: normalize various server shapes into AskResult
   function normalize(result: any): AskResult {
@@ -37,7 +39,7 @@ export default function App() {
 
     while (true) {
       if (signal?.aborted) throw new Error("aborted");
-      const res = await fetch(statusUrl, { headers: { "Accept": "application/json" }, signal });
+      const res = await authFetch(statusUrl, { headers: { "Accept": "application/json" }, signal });
 
       if (res.status === 404) throw new Error("Job not found");
       if (!res.ok) throw new Error(`Status fetch failed (${res.status})`);
@@ -73,7 +75,7 @@ export default function App() {
     const signal = controller.signal;
 
     // 1) Kick off the job
-    const submitRes = await fetch(`${AGENT_API_BASE}/messages/submit`, {
+    const submitRes = await authFetch(`${AGENT_API_BASE}/messages/submit`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ message: input, username, type: import.meta.env.VITE_SYNTHETIC_SOUL_DM_TYPE }),
@@ -105,5 +107,11 @@ export default function App() {
     return await pollJob(statusUrl, signal);
   };
 
-  return <SyntheticSoul onAsk={ask} title="JASMINE" username={username} />;
+  return (
+    <>
+    {/* Tiny auth chip in your header bar (right side). Place where it fits your layout best */}
+    <div className="fixed right-3 top-3 z-50"><AuthMenu /></div>
+    <SyntheticSoul onAsk={ask} />
+    </>
+  );
 }

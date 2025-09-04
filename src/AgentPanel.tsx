@@ -9,6 +9,7 @@ type PersonalityMatrix = Record<string, ScalarDim>;
 type EmotionMatrix = Record<string, ScalarDim>;
 
 type Props = {
+  agentName?: string;
   expression?: string;       // e.g. "happy"
   lastLatency?: number; // seconds
   mbti?: string;              // e.g., "ISFP"
@@ -188,6 +189,7 @@ function EmotionRow({ label, dim }: { label: string; dim: ScalarDim }) {
 
 /* ---------- Panel ---------- */
 export default function AgentPanel({ 
+  agentName,
   expression, 
   lastLatency,
   mbti,
@@ -222,9 +224,9 @@ export default function AgentPanel({
     <div className="relative overflow-hidden rounded-2xl border border-emerald-500/25 bg-gradient-to-b from-emerald-950/40 to-black/70 shadow-2xl">
       {/* Header */}
       <div className="flex items-center justify-between border-b border-emerald-700/20 px-3 py-2 text-[10px] uppercase tracking-widest text-emerald-300">
-        <span>{agentLoaded ? "agent online" : "agent offline"}</span>
+        <span>{agentLoaded ? `${agentName} online` : "agent offline"}</span>
         <span className="text-emerald-400/70">
-          {lastLatency != null ? `${lastLatency.toFixed(2)}s` : "—"}
+          Last Response Latency: {lastLatency != null ? `${lastLatency.toFixed(2)}s` : "—"}
         </span>
       </div>
 
