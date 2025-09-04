@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { getOrCreateClientId } from "./ids";
 import AgentPanel from "./AgentPanel";
 import type { AskResult } from "./App";
+import { useAuth } from "./auth";
 
 type ScalarDim = { description?: string; value: number; min?: number; max?: number };
 type PersonalityMatrix = Record<string, ScalarDim>;
@@ -15,30 +16,13 @@ const api = (path: string) => `${AGENT_API_BASE}${path}`;
 
 export default function SyntheticSoul({
   onAsk,
-  title = "JASMINE",
-  username
 }: {
   onAsk?: (input: string) => Promise<AskResult>;
-  title?: string;
-  username?: string;
 }) {
   const clientId = getOrCreateClientId();
-  const [messages, setMessages] = useState<
-    { id: number | string; role: "user" | "assistant" | "system"; text: string }[]
-  >([
-    {
-      id: 1,
-      role: "system",
-      text:
-        "VERSION 1.0 — YOU ARE BEING MONITORED FOR YOUR SAFETY — " + clientId,
-    },
-    {
-      id: 2,
-      role: "assistant",
-      text:
-        "WELCOME, USER. I AM JaSMINE. WHAT THOUGHT WOULD YOU LIKE TO SHARE?",
-    },
-  ]);
+  const { token, user, authFetch, getAuthHeader } = useAuth();
+  const activeUsername = user?.username;
+
   const [input, setInput] = useState("");
   const [typing, setTyping] = useState(false);
   const [live, setLive] = useState("");
@@ -50,9 +34,14 @@ export default function SyntheticSoul({
   const [emotions, setEmotions] = useState<EmotionMatrix | undefined>(undefined);
   const [latestThought, setLatestThought] = useState<string>("");
   const [agentLoaded, setAgentLoaded] = useState(false);
+  const [agentName, setAgentName] = useState<string>("");
 
   const [lastExpression, setLastExpression] = useState<string | undefined>(undefined);
   const [lastLatency, setLastLatency] = useState<number | undefined>(undefined);
+
+   const [messages, setMessages] = useState<
+    { id: number | string; role: "user" | "assistant" | "system"; text: string }[]
+  >([]);
 
   /** Populate chat window with conversation data on page load */
   useEffect(() => {
@@ -64,9 +53,22 @@ export default function SyntheticSoul({
     }
 
     async function loadConversation() {
-      if (!username) return;
       try {
-        const res = await fetch(api(`/messages/conversation/${encodeURIComponent(username)}`), {
+        setMessages([
+          {
+            id: 1,
+            role: "system",
+            text:
+              "VERSION 1.0 — YOU ARE BEING MONITORED FOR YOUR SAFETY — " + activeUsername,
+          },
+          {
+            id: 2,
+            role: "assistant",
+            text:
+              `WELCOME, USER. I AM ${agentName}. WHAT THOUGHT WOULD YOU LIKE TO SHARE?`,
+          },
+        ])
+        const res = await authFetch(api(`/messages/conversation`), {
           headers: { Accept: "application/json" },
         });
         if (!res.ok) return; // silently ignore if no history yet
@@ -94,7 +96,7 @@ export default function SyntheticSoul({
     }
 
     loadConversation();
-  }, [username]);
+  }, [token, activeUsername, agentName]);
 
   /** Populate Jasmine data */
   useEffect(() => {
@@ -104,7 +106,7 @@ export default function SyntheticSoul({
       try {
         const url = api('/agents/active');
 
-        const res = await fetch(`${url}`, {
+        const res = await authFetch(`${url}`, {
           headers: { Accept: "application/json" },
         });
         if (!res.ok) throw new Error(`Agent fetch ${res.status}`);
@@ -114,12 +116,15 @@ export default function SyntheticSoul({
 
         // Pull fields
         const agent = data?.agent;
+        const name = agent?.name;
+        const capName = name ? name.toUpperCase() : "";
         const mbti = agent?.personality?.["myers-briggs"] || agent?.personality?.myersBriggs || agent?.personality?.mbti;
         const idText = agent?.identity as string | undefined;
 
         const pMatrix: PersonalityMatrix | undefined = agent?.personality?.personality_matrix;
         const eMatrix: EmotionMatrix | undefined = agent?.emotional_status?.emotions;
 
+        setAgentName(capName);
         setAgentMBTI(mbti);
         setAgentIdentity(idText);
         setPersonality(pMatrix);
@@ -137,7 +142,7 @@ export default function SyntheticSoul({
     // poll every 30 seconds (tweak as desired)
     const id = setInterval(fetchAgent, 30 * 1000);
     return () => { cancelled = true; clearInterval(id); };
-  }, []);
+  }, [token]);
 
   /** Populate Latest thought */
   useEffect(() => {
@@ -145,7 +150,7 @@ export default function SyntheticSoul({
 
     async function fetchLatestThought() {
       try {
-        const res = await fetch(api("/thoughts/latest"), {
+        const res = await authFetch(api("/thoughts/latest"), {
           headers: { Accept: "application/json" },
         });
         if (!res.ok) return;
@@ -162,7 +167,7 @@ export default function SyntheticSoul({
     fetchLatestThought();
     const id = setInterval(fetchLatestThought, 60 * 1000); // 🔁 1 min
     return () => { cancelled = true; clearInterval(id); };
-  }, []);
+  }, [token]);
 
   /** Smooth scroll to most recent messages */
   useEffect(() => {
@@ -183,7 +188,7 @@ export default function SyntheticSoul({
     setLive("");
 
     try {
-      const ignoreResponse = "JASMINE has chosen to ignore your correspondence.";
+      const ignoreResponse = `${agentName} has chosen to ignore your correspondence.`;
       let result: AskResult = { text: "" };
       if (onAsk) {
         result = await onAsk(trimmed);
@@ -217,7 +222,7 @@ export default function SyntheticSoul({
           id: Date.now() + 2,
           role: "assistant",
           text:
-            "ERROR: EXTERNAL THOUGHT FUNCTION FAILED. PLEASE CHECK SERVER.",
+            `ERROR: ${agentName} THOUGHT FUNCTION FAILED. PLEASE CHECK SERVER.`,
         },
       ]);
     } finally {
@@ -264,7 +269,7 @@ export default function SyntheticSoul({
           </div>
           <div className="text-right">
             <h1 className="text-xl font-black leading-none text-transparent bg-clip-text bg-gradient-to-r from-emerald-300 via-cyan-300 to-blue-400 drop-shadow-[0_0_15px_rgba(34,211,238,0.6)]">
-              {title}<span className="text-rose-400">84</span>
+              SyntheticSoul<span className="text-rose-400">84</span>
             </h1>
             <span className="text-[10px] tracking-widest text-emerald-300/70">作成者:居心地の良い — 2025</span>
           </div>
@@ -277,7 +282,8 @@ export default function SyntheticSoul({
           {/* LEFT: Agent panel (sticky) */}
           <aside className="lg:col-span-2 md:col-span-2">
             <div className="sticky top-24">
-              <AgentPanel 
+              <AgentPanel
+              agentName={agentName} 
               expression={lastExpression} 
               lastLatency={lastLatency}
               mbti={agentMBTI}
@@ -295,7 +301,7 @@ export default function SyntheticSoul({
             <section className="rounded-2xl border border-emerald-400/30 bg-black/50 p-4 shadow-[0_0_40px_rgba(16,185,129,0.25)]">
               <div className="flex items-center justify-between">
                 <div className="text-sm text-emerald-200/80 tracking-widest">
-                  <span className="mr-2">JASMINE</span>· SAVING CONVERSATION DATA…
+                  <span className="mr-2">{agentName}</span>· SAVING CONVERSATION DATA…
                 </div>
                 <div className="text-xs text-emerald-300/70">“DON'T BE EVIL”</div>
               </div>
@@ -314,14 +320,14 @@ export default function SyntheticSoul({
 
               <div ref={listRef} className="relative z-10 flex-1 max-h-[70vh] overflow-y-auto pr-1">
                 {messages.map((m) => (
-                  <Message key={m.id} role={m.role} text={m.text} />
+                  <Message key={m.id} role={m.role} text={m.text} username={activeUsername} agentName={agentName} />
                 ))}
 
                 {typing && (
                   <div className="mt-3">
                     <AssistantBubble>
                       <div className="flex items-center gap-2">
-                        <span className="text-xs">JASMINE THINKING</span>
+                        <span className="text-xs">{agentName} THINKING</span>
                         <Dots />
                       </div>
                       <div className="mt-2 text-emerald-100/90">
@@ -354,7 +360,7 @@ export default function SyntheticSoul({
             {/* Premium notice bar */}
             <section className="rounded-2xl border border-orange-400/40 bg-black/60 p-4 text-orange-200 shadow-[0_0_40px_rgba(251,146,60,0.25)]">
               <p className="text-xs sm:text-sm tracking-widest">
-                PREMIUM THOUGHT — {latestThought || "No recent thought."}
+                {agentName}'S LATEST THOUGHT — {latestThought || "No recent thought."}
               </p>
               <div className="mt-2 h-1.5 w-full overflow-hidden rounded bg-orange-900/40">
                 <div className="h-full w-1/4 animate-[load_3s_linear_infinite] bg-gradient-to-r from-orange-400 via-rose-400 to-red-500" />
@@ -362,7 +368,7 @@ export default function SyntheticSoul({
             </section>
 
             <footer className="mb-8 mt-2 text-center text-[10px] tracking-widest text-emerald-300/60">
-              YOU WATCH ME · I WATCH YOU · JASMINE · SYNTHETIC SOUL
+              YOU WATCH ME · I WATCH YOU · {agentName} · SYNTHETIC SOUL
             </footer>
           </section>
         </div>
@@ -383,7 +389,7 @@ export default function SyntheticSoul({
   );
 }
 
-function Message({ role, text }: { role: "user" | "assistant" | "system"; text: string }) {
+function Message({ role, text, username, agentName }: { role: "user" | "assistant" | "system"; text: string; username: string | undefined; agentName: string | undefined; }) {
   if (role === "system") {
     return (
       <div className="my-2 text-center text-[10px] tracking-widest text-emerald-300/70">
@@ -396,12 +402,12 @@ function Message({ role, text }: { role: "user" | "assistant" | "system"; text: 
     <div className={`mt-3 flex ${isUser ? "justify-end" : "justify-start"}`}>
       {isUser ? (
         <UserBubble>
-          <Label>GUEST_{getOrCreateClientId()}_//</Label>
+          <Label>{username}_//</Label>
           <p className="whitespace-pre-wrap text-emerald-50/90">{text}</p>
         </UserBubble>
       ) : (
         <AssistantBubble>
-          <Label>JASMINE_//</Label>
+          <Label>{agentName}_//</Label>
           <p className="whitespace-pre-wrap text-emerald-100/90">{text}</p>
         </AssistantBubble>
       )}
