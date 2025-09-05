@@ -1,7 +1,6 @@
 import AuthMenu from "./AuthMenu";
 import SyntheticSoul from "./SyntheticSoul";
 import { useAuth } from "./auth";
-import { getOrCreateClientId } from "./ids";
 
 export type AskResult = {
   text: string;
@@ -12,8 +11,7 @@ export type AskResult = {
 const AGENT_API_BASE = import.meta.env.VITE_SYNTHETIC_SOUL_BASE_URL || "";
 
 export default function App() {
-  const { user, token, authFetch, getAuthHeader } = useAuth();
-  const username = user?.username
+  const { authFetch } = useAuth();
 
   // Helper: normalize various server shapes into AskResult
   function normalize(result: any): AskResult {
