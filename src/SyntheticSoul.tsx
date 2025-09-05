@@ -1,5 +1,4 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { getOrCreateClientId } from "./ids";
 import AgentPanel from "./AgentPanel";
 import type { AskResult } from "./App";
 import { useAuth } from "./auth";
