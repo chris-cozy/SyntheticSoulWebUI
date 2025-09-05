@@ -19,8 +19,7 @@ export default function SyntheticSoul({
 }: {
   onAsk?: (input: string) => Promise<AskResult>;
 }) {
-  const clientId = getOrCreateClientId();
-  const { token, user, authFetch, getAuthHeader } = useAuth();
+  const { token, user, authFetch } = useAuth();
   const activeUsername = user?.username;
 
   const [input, setInput] = useState("");
