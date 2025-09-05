@@ -1,73 +1,186 @@
-# React + TypeScript + Vite
+# 🌌 Synthetic Soul UI
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+A neon-styled, cyber-aesthetic web interface for interacting with the **Synthetic Soul API agents**.
+It provides authentication, live chat, personality/emotion visualizations, and agent status dashboards.
 
-Currently, two official plugins are available:
+---
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+## ✨ Features
 
-## Expanding the ESLint configuration
+* **Authentication**
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+  * Guest sessions, login, signup (claim), refresh, and logout
+  * Token persistence with auto-refresh
+  * `AuthProvider` + `useAuth()` hook for React integration
 
-```js
-export default tseslint.config([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+* **Agent Chat**
 
-      // Remove tseslint.configs.recommended and replace with this
-      ...tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      ...tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      ...tseslint.configs.stylisticTypeChecked,
+  * Secure chat interface with conversation persistence
+  * Polling system for async job responses
+  * Neon-themed UI with glitch and CRT effects
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+* **Agent Panel**
+
+  * Displays agent **expression**, **MBTI type**, **identity text**
+  * Personality matrix (bars or radar chart)
+  * Emotional status (heat-mapped bars or radar chart)
+  * Latency indicator + online/offline state
+
+* **Visualizations**
+
+  * `NeonRadar`: general radar chart (e.g. personality)
+  * `NeonEmotionRadar`: emotion-mapped radar chart with color semantics
+  * Smooth neon gradients, animated bars, pulsing dots
+
+* **Persistence**
+
+  * Session IDs + client IDs (`ids.ts`) stored in browser storage
+  * Agent view preferences (`bars` vs `radar`) saved locally
+
+---
+
+## 🛠️ Tech Stack
+
+* **React 18 + Vite**
+* **TypeScript**
+* **Tailwind CSS** for neon cyber-aesthetic styling
+* **Chart.js + react-chartjs-2** for radar charts
+* **Custom Auth Layer** wrapping `/v1/auth/*` endpoints
+
+---
+
+## 📂 Project Structure
+
+```
+src/
+ ├── App.tsx               # Root app, wires auth + SyntheticSoul
+ ├── SyntheticSoul.tsx     # Main chat + layout
+ ├── AgentPanel.tsx        # Side panel for agent info
+ ├── NeonRadar.tsx         # Personality radar visualization
+ ├── NeonEmotionRadar.tsx  # Emotion radar visualization
+ ├── AuthMenu.tsx          # Header auth menu component
+ ├── auth.tsx              # Auth provider + hooks
+ ├── ids.ts                # Client/session ID helpers
+ ├── main.tsx              # Entry point
+ └── index.css             # Tailwind + global CSS
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+---
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+## 🚀 Getting Started
 
-export default tseslint.config([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+### 1. Prerequisites
+
+* **Node.js** ≥ 18
+* **pnpm**, **yarn**, or **npm**
+
+### 2. Install Dependencies
+
+```bash
+npm install
+# or
+yarn install
+# or
+pnpm install
 ```
 
-To run the program locally
-- npm i
-- npm run dev
+### 3. Environment Variables
+
+Create a `.env` file with:
+
+```env
+VITE_SYNTHETIC_SOUL_BASE_URL=https://your-api-base-url/v1
+VITE_SYNTHETIC_SOUL_DM_TYPE=default   # or "chat", depending on your API
+```
+
+### 4. Run Dev Server
+
+```bash
+npm run dev
+```
+
+Then visit: `http://localhost:5173`
+
+### 5. Build for Production
+
+```bash
+npm run build
+```
+
+---
+
+## 🔐 Authentication Flow
+
+* On load:
+
+  * If a valid token exists → refresh it
+  * Else → create a **guest session**
+* Actions available:
+
+  * `startGuest()` → POST `/auth/guest`
+  * `login(email, password)`
+  * `claim(email, username, password)`
+  * `refresh()` → POST `/auth/refresh`
+  * `logout()` → clears token and starts a new guest
+
+The `authFetch` helper automatically:
+
+* Attaches the Bearer token
+* Retries once if a request fails with 401 (after refresh)
+
+---
+
+## 🖼️ UI Overview
+
+* **Top bar**: branding, auth menu
+* **Left panel**: AgentPanel (expression image, MBTI, personality, emotions)
+* **Right panel**: Chat interface, conversation log, input box
+* **Status bars**: latency, version info, agent’s latest thought
+
+---
+
+## 📊 Visualizations
+
+* **Radar charts**
+
+  * `NeonRadar` for personality dimensions
+  * `NeonEmotionRadar` with emotion heat colors (`joy`, `anger`, `fear`, etc.)
+* **Bar charts**
+
+  * Personality grouped by themes (Relational Traits, Drive, Stability…)
+  * Emotion bars with gradient fills + glowing indicators
+
+---
+
+## ⚙️ Customization
+
+* Expressions loaded from `/public/expressions/*.jpg`
+* Neon colors adjustable in `NeonRadar.tsx` / `NeonEmotionRadar.tsx`
+* Tailwind classes for cyberpunk style (`bg-black/70`, emerald/cyan gradients)
+
+---
+
+## 📡 API Endpoints Used
+
+* `/v1/auth/*` → guest, login, claim, refresh, logout, me
+* `/v1/messages/submit` → submit user input
+* `/v1/jobs/:id` → poll job results
+* `/v1/messages/conversation` → load conversation history
+* `/v1/agents/active` → active agent info (MBTI, personality, emotions)
+* `/v1/thoughts/latest` → agent’s latest thought
+* `/v1/meta/version` → API version info
+
+---
+
+## 🧩 Future Enhancements
+
+* Multiple agent selection
+* Realtime streaming responses
+* Dark/light mode toggle
+* Advanced emotion mapping (beyond Plutchik’s wheel)
+
+---
+
+## 📜 License
+
+MIT — free to modify, adapt, and use.
