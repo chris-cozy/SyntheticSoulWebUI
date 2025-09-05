@@ -78,7 +78,7 @@ export default function App() {
     const submitRes = await authFetch(`${AGENT_API_BASE}/messages/submit`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message: input, username, type: import.meta.env.VITE_SYNTHETIC_SOUL_DM_TYPE }),
+      body: JSON.stringify({ message: input, type: import.meta.env.VITE_SYNTHETIC_SOUL_DM_TYPE }),
       signal
     });
 
