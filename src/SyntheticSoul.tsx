@@ -33,6 +33,7 @@ export default function SyntheticSoul({
   const [latestThought, setLatestThought] = useState<string>("");
   const [agentLoaded, setAgentLoaded] = useState(false);
   const [agentName, setAgentName] = useState<string>("");
+  const [apiVersion, setApiVersion] = useState<string>("")
 
   const [lastExpression, setLastExpression] = useState<string | undefined>(undefined);
   const [lastLatency, setLastLatency] = useState<number | undefined>(undefined);
@@ -40,6 +41,28 @@ export default function SyntheticSoul({
    const [messages, setMessages] = useState<
     { id: number | string; role: "user" | "assistant" | "system"; text: string }[]
   >([]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadVersion() {
+      try{
+        const res = await authFetch(api(`/meta/version`), {
+          headers: { Accept: "application/json" },
+        });
+        if (!res.ok) return; // silently ignore if no history yet
+        const data = await res.json();
+        const version: string = data?.version || ""
+        if (cancelled) return;
+
+        setApiVersion(version);
+      } catch {
+        /* ignore */
+      }
+    }
+
+    loadVersion();
+  }, []);
 
   /** Populate chat window with conversation data on page load */
   useEffect(() => {
@@ -57,7 +80,7 @@ export default function SyntheticSoul({
             id: 1,
             role: "system",
             text:
-              "VERSION 1.0 — YOU ARE BEING MONITORED FOR YOUR SAFETY — " + activeUsername,
+              `VERSION ${apiVersion} — YOU ARE BEING MONITORED FOR YOUR SAFETY — ` + activeUsername,
           },
           {
             id: 2,
