@@ -11,6 +11,8 @@ const AGENT_API_BASE = (import.meta.env.VITE_SYNTHETIC_SOUL_BASE_URL || "")
   .toString()
   .replace(/\/+$/, "");;
 
+const LOCAL_EXPRESSION_TTL_MS = 12000; // 12 seconds
+
 const api = (path: string) => `${AGENT_API_BASE}${path}`;
 
 export default function SyntheticSoul({
@@ -35,13 +37,25 @@ export default function SyntheticSoul({
   const [agentName, setAgentName] = useState<string>("");
   const [apiVersion, setApiVersion] = useState<string>("")
 
-  const [lastExpression, setLastExpression] = useState<string | undefined>(undefined);
+  const [globalExpression, setGlobalExpression] = useState<string | undefined>(undefined);
+  const [localExpression, setLocalExpression] = useState<string | undefined>(undefined);
   const [lastLatency, setLastLatency] = useState<number | undefined>(undefined);
 
    const [messages, setMessages] = useState<
     { id: number | string; role: "user" | "assistant" | "system"; text: string }[]
   >([]);
 
+  /** Expressions */
+  const currentExpression = localExpression ?? globalExpression;
+
+  /** Local Expression TTL */
+  useEffect(() => {
+    if (localExpression == null) return;
+    const id = setTimeout(() => setLocalExpression(undefined), LOCAL_EXPRESSION_TTL_MS);
+    return () => clearTimeout(id);
+  }, [localExpression]);
+
+  /** Populate version */
   useEffect(() => {
     let cancelled = false;
 
@@ -141,6 +155,7 @@ export default function SyntheticSoul({
         const capName = name ? name.toUpperCase() : "";
         const mbti = agent?.personality?.["myers-briggs"] || agent?.personality?.myersBriggs || agent?.personality?.mbti;
         const idText = agent?.identity as string | undefined;
+        const expression = agent?.global_expression;
 
         const pMatrix: PersonalityMatrix | undefined = agent?.personality?.personality_matrix;
         const eMatrix: EmotionMatrix | undefined = agent?.emotional_status?.emotions;
@@ -151,6 +166,7 @@ export default function SyntheticSoul({
         setPersonality(pMatrix);
         setEmotions(eMatrix);
         setAgentLoaded(true);
+        setGlobalExpression(expression);
       } catch (err: any) {
         console.warn("Agent fetch failed:", err);
         if (cancelled) return;
@@ -233,7 +249,7 @@ export default function SyntheticSoul({
       }
 
       // Update panel fields
-      setLastExpression(result.expression);
+      if (result.expression) setLocalExpression(result.expression);
       setLastLatency(result.time);
       
     } catch (err: any) {
@@ -305,7 +321,7 @@ export default function SyntheticSoul({
             <div className="sticky top-24">
               <AgentPanel
               agentName={agentName} 
-              expression={lastExpression} 
+              expression={currentExpression} 
               lastLatency={lastLatency}
               mbti={agentMBTI}
               identity={agentIdentity}

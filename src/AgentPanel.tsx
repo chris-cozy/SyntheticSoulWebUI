@@ -21,25 +21,27 @@ type Props = {
 
 /* ---------- Emote loader (public/emotes/*, multi-ext, cached) ---------- */
 const DEFAULT_EXPRESSION = "neutral";
-const EXT_ORDER = ["jpg"] as const;
+const EXT_ORDER = ["jpeg"] as const;
 const expressionExtCache = new Map<string, string>();
+const API_BASE_NO_VERSION = (import.meta.env.VITE_SYNTHETIC_SOUL_BASE_URL_NO_VERSION || "").toString().replace(/\/+$/, "");
 
-function expressionUrl(name: string, ext: string) {
-  return `/expressions/${name}.${ext}`;
+function expressionUrl(name: string, ext: string, agentName: string | undefined) {
+  agentName = agentName?.toLowerCase();
+  return `${API_BASE_NO_VERSION}/static/expressions/${agentName}/${name}.${ext}`;
 }
 
 /**
  * Small image component that tries multiple extensions in order.
  * Caches the successful extension so future loads skip straight to it.
  */
-function ExpressionImage({ name }: { name: string }) {
+function ExpressionImage({ name, agentName }: { name: string, agentName: string | undefined }) {
   const cachedExt = expressionExtCache.get(name);
   const initialIndex = cachedExt ? Math.max(0, EXT_ORDER.indexOf(cachedExt as any)) : 0;
 
   const [idx, setIdx] = useState<number>(initialIndex);
   const attemptedFallback = useRef(false);
 
-  const src = useMemo(() => expressionUrl(name, EXT_ORDER[idx] as string), [name, idx]);
+  const src = useMemo(() => expressionUrl(name, EXT_ORDER[idx] as string, agentName), [name, idx]);
 
   console.log(src)
 
@@ -65,7 +67,7 @@ function ExpressionImage({ name }: { name: string }) {
           let i = 0;
           const tryDefault = () => {
             if (i >= EXT_ORDER.length) return; // give up
-            const candidate = expressionUrl(DEFAULT_EXPRESSION, EXT_ORDER[i]);
+            const candidate = expressionUrl(DEFAULT_EXPRESSION, EXT_ORDER[i], agentName);
             const testImg = new Image();
             testImg.onload = () => {
               target.src = candidate;
@@ -232,7 +234,7 @@ export default function AgentPanel({
 
       {/* Expression */}
       <div className="relative aspect-[4/3] w-full overflow-hidden">
-        <ExpressionImage name={name} />
+        <ExpressionImage name={name} agentName={agentName} />
 
         {/* scanline/grid overlay */}
         <div
