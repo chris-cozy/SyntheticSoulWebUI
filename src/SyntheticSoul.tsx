@@ -403,11 +403,16 @@ export default function SyntheticSoul({
                 </p>
               </section>
               <div className="grid grid-cols-[1fr_auto] gap-3">
-                <input
+                <textarea
                   value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && sendMessage()}
-                  className="h-12 rounded-xl border border-emerald-400/30 bg-black/70 px-4 text-emerald-100 placeholder:text-emerald-300/50 focus:outline-none focus:ring-2 focus:ring-emerald-400/60"
+                  onChange={(e)=>setInput(e.target.value)}
+                  onKeyDown={(e)=>{
+                    if ((e.key==="Enter" && !e.shiftKey) || (e.key==="Enter" && (e.metaKey||e.ctrlKey))) {
+                      e.preventDefault(); sendMessage();
+                    }
+                  }}
+                  rows={1}
+                  className="h-12 min-h-12 max-h-40 resize-none rounded-xl border border-emerald-400/30 bg-black/70 px-4 py-3 leading-5"
                   placeholder="ENTER YOUR THOUGHT…"
                 />
                 <button 
