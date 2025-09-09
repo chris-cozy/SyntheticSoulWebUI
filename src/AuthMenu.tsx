@@ -37,7 +37,7 @@ export default function AuthMenu() {
       </button>
 
       {open && (
-        <div className="absolute right-0 z-50 mt-2 w-64 rounded-lg border border-emerald-700/30 bg-black/80 p-3 text-emerald-200 shadow-xl backdrop-blur">
+        <div className="fixed right-3 top-14 z-[200] w-64 rounded-lg border border-emerald-700/30 bg-black/80 p-3 text-emerald-200 shadow-xl backdrop-blur">
           {!mode && (
             <div className="space-y-2 text-[11px]">
               <div className="flex items-center justify-between">
