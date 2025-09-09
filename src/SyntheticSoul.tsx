@@ -2,6 +2,8 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import AgentPanel from "./AgentPanel";
 import type { AskResult } from "./App";
 import { useAuth } from "./auth";
+import InsightsPanel from "./InsightsPanel";
+import AuthMenu from "./AuthMenu";
 
 type ScalarDim = { description?: string; value: number; min?: number; max?: number };
 type PersonalityMatrix = Record<string, ScalarDim>;
@@ -40,6 +42,7 @@ export default function SyntheticSoul({
   const [globalExpression, setGlobalExpression] = useState<string | undefined>(undefined);
   const [localExpression, setLocalExpression] = useState<string | undefined>(undefined);
   const [lastLatency, setLastLatency] = useState<number | undefined>(undefined);
+  const [insightsOpen, setInsightsOpen] = useState(false); 
 
    const [messages, setMessages] = useState<
     { id: number | string; role: "user" | "assistant" | "system"; text: string }[]
@@ -283,8 +286,8 @@ export default function SyntheticSoul({
   }, []);
 
   return (
-    <div className="relative min-h-screen w-full overflow-hidden bg-black text-green-200">
-      {/* CRT lines + glows */}
+    <div className="relative h-screen w-full overflow-hidden bg-black text-green-200">
+      {/* CRT lines & ambient glows */}
       <div
         className="pointer-events-none absolute inset-0 z-10 mix-blend-screen"
         style={{
@@ -295,30 +298,45 @@ export default function SyntheticSoul({
       />
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_-20%,rgba(0,255,120,0.2),transparent_40%),radial-gradient(circle_at_30%_120%,rgba(255,0,0,0.15),transparent_40%),radial-gradient(circle_at_110%_10%,rgba(0,120,255,0.2),transparent_35%)]" />
 
-      {/* Top status bar */}
-      <header className="relative z-20 border-b border-emerald-500/30 bg-black/60 px-4 py-3 backdrop-blur">
-        <div className="mx-auto flex max-w-5xl items-center justify-between">
+      {/* Header — fixed height */}
+      <header className="relative z-[120] h-14 border-b border-emerald-500/30 bg-black/60 px-6 backdrop-blur flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="h-3 w-3 animate-pulse rounded-full bg-emerald-400 shadow-[0_0_20px_2px_rgba(16,185,129,0.75)]" />
-            <p className="text-xs sm:text-sm tracking-widest text-emerald-300/90">
-              <span className="opacity-70">OVERSEER TODAY:</span> 居心地の良い · THOUGHTCRIMES COMMITTED: 0
+            <p className="text-xs tracking-widest text-emerald-300/90">
+              <span className="opacity-70">OVERSEER TODAY:</span> 居心地の良い
             </p>
           </div>
-          <div className="text-right">
-            <h1 className="text-xl font-black leading-none text-transparent bg-clip-text bg-gradient-to-r from-emerald-300 via-cyan-300 to-blue-400 drop-shadow-[0_0_15px_rgba(34,211,238,0.6)]">
-              SyntheticSoul<span className="text-rose-400">84</span>
-            </h1>
-            <span className="text-[10px] tracking-widest text-emerald-300/70">作成者:居心地の良い — 2025</span>
-          </div>
-        </div>
+          <div className="flex items-center gap-3">
+            {/* Show button to open insights on <xl screens */}
+            <button
+              onClick={() => setInsightsOpen(true)}
+              className="xl:hidden rounded border border-emerald-700/40 bg-black/50 px-2 py-1 text-[10px] uppercase tracking-widest text-emerald-300"
+            >
+              insights
+            </button>
+            {/* title block */}
+            <AuthMenu />
+            <div className="flex items-center gap-3">
+              <div className="hidden sm:block text-right">
+                  <h1 className="text-xl font-black leading-none text-transparent bg-clip-text bg-gradient-to-r from-emerald-300 via-cyan-300 to-blue-400 drop-shadow-[0_0_15px_rgba(34,211,238,0.6)]">
+                    SyntheticSoul<span className="text-rose-400">84</span>
+                  </h1>
+                  <span className="text-[10px] tracking-widest text-emerald-300/70">作成者:居心地の良い — 2025</span>
+              </div>
+            </div>
+          </div>  
       </header>
 
-      {/* Content panel */}
-      <main className="relative z-20 mx-auto mt-6 max-w-5xl px-3 sm:px-4">
-        <div className="grid grid-cols-1 gap-3 lg:grid-cols-5 md:grid-cols-5 md:gap-6">
-          {/* LEFT: Agent panel (sticky) */}
-          <aside className="lg:col-span-2 md:col-span-2">
-            <div className="sticky top-24">
+      {/* Main — fills the rest of the viewport; full-bleed, no page scroll */}
+      <main className="relative z-20 h-[calc(100vh-56px)] w-full px-4 sm:px-6 py-4">
+        <div className="
+          grid h-full gap-4
+          grid-cols-1
+          lg:grid-cols-[minmax(320px,0.35fr)_1fr]
+          xl:grid-cols-[minmax(320px,0.28fr)_1fr_minmax(280px,0.32fr)]
+        ">
+          {/* LEFT: Agent (no matrices) */}
+          <aside className="hidden lg:block min-w-0 overflow-auto rounded-2xl border border-emerald-500/25 bg-black/40 p-2">
               <AgentPanel
               agentName={agentName} 
               expression={currentExpression} 
@@ -327,17 +345,17 @@ export default function SyntheticSoul({
               identity={agentIdentity}
               personality={personality}
               emotions={emotions}
-              agentLoaded={agentLoaded} 
+              agentLoaded={agentLoaded}
+              showMatrices={false} 
               />
-            </div>
           </aside>
 
-          {/* RIGHT: everything you had before */}
-          <section className="md:col-span-3 flex flex-col gap-3">
-            {/* Glitch title bar */}
-            <section className="rounded-2xl border border-emerald-400/30 bg-black/50 p-4 shadow-[0_0_40px_rgba(16,185,129,0.25)]">
+          {/* Middle: Chat column */}
+          <section className="min-w-0 grid grid-rows-[auto_1fr_auto] gap-3">
+            {/* Title */} 
+            <div className="rounded-xl border border-emerald-400/30 bg-black/50 p-3 shadow-[0_0_40px_rgba(16,185,129,0.25)]">
               <div className="flex items-center justify-between">
-                <div className="text-sm text-emerald-200/80 tracking-widest">
+                <div className="text-[13px] text-emerald-200/80 tracking-widest">
                   <span className="mr-2">{agentName}</span>· SAVING CONVERSATION DATA…
                 </div>
                 <div className="text-xs text-emerald-300/70">“DON'T BE EVIL”</div>
@@ -345,17 +363,17 @@ export default function SyntheticSoul({
               <div className="mt-2 h-1.5 w-full overflow-hidden rounded bg-emerald-900/50">
                 <div className="h-full w-1/3 animate-[load_2.8s_ease_infinite] bg-gradient-to-r from-emerald-400 to-cyan-400" />
               </div>
-            </section>
+            </div>
 
-            {/* Chat area */}
-            <section
-              className="relative flex min-h-[78vh] flex-col rounded-2xl border border-emerald-400/30 bg-black/60 p-3 sm:p-4 shadow-[0_0_60px_rgba(16,185,129,0.25)]"
+            {/* Chat area (fills remaining height) */}
+            <div
+              className="relative min-h-0 rounded-2xl border border-emerald-400/30 bg-black/60 p-3 shadow-[0_0_60px_rgba(16,185,129,0.25)]"
               style={{ backgroundImage: `${grid}`, backgroundSize: "64px 64px" }}
             >
               <div className="pointer-events-none absolute inset-0 rounded-2xl ring-1 ring-emerald-400/10" />
-              <div className="pointer-events-none absolute inset-x-0 top-0 h-24 rounded-t-2xl bg-gradient-to-b from-white/5 to-transparent" />
+              <div className="pointer-events-none absolute inset-x-0 top-0 h-16 rounded-t-2xl bg-gradient-to-b from-white/5 to-transparent" />
 
-              <div ref={listRef} className="relative z-10 flex-1 max-h-[70vh] overflow-y-auto pr-1">
+              <div ref={listRef} className="relative z-10 h-full overflow-y-auto pr-1">
                 {messages.map((m) => (
                   <Message key={m.id} role={m.role} text={m.text} username={activeUsername} agentName={agentName} />
                 ))}
@@ -375,46 +393,55 @@ export default function SyntheticSoul({
                   </div>
                 )}
               </div>
+            </div>
 
-              {/* Input */}
-              <div className="relative z-10 mt-8 flex items-center gap-2">
+            {/* Composer row — with a small ticker above input */}
+            <div className="grid grid-rows-[auto_auto] gap-2">
+              <section className="hidden md:block xl:hidden rounded-2xl border border-orange-400/40 bg-black/60 p-4 text-orange-200 shadow-[0_0_40px_rgba(251,146,60,0.25)]">
+                <p className="text-[12px] md:text-sm lg:text-base tracking-widest">
+                  {agentName}'S LATEST THOUGHT — {latestThought || "No recent thought."}
+                </p>
+              </section>
+              <div className="grid grid-cols-[1fr_auto] gap-3">
                 <input
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && sendMessage()}
+                  className="h-12 rounded-xl border border-emerald-400/30 bg-black/70 px-4 text-emerald-100 placeholder:text-emerald-300/50 focus:outline-none focus:ring-2 focus:ring-emerald-400/60"
                   placeholder="ENTER YOUR THOUGHT…"
-                  className="flex-1 rounded-xl border border-emerald-400/30 bg-black/70 px-4 py-3 text-emerald-100 placeholder:text-emerald-300/50 focus:outline-none focus:ring-2 focus:ring-emerald-400/60"
                 />
-                <button
+                <button 
                   onClick={sendMessage}
-                  className="rounded-xl border border-cyan-400/40 bg-gradient-to-br from-emerald-600/40 to-cyan-600/30 px-4 py-3 text-sm tracking-widest text-cyan-200 shadow-[0_0_25px_rgba(34,211,238,0.35)] transition active:scale-95 hover:shadow-[0_0_35px_rgba(34,211,238,0.55)]"
-                >
+                  disabled={typing || !input.trim()}
+                  className="h-12 rounded-xl border border-cyan-400/40 bg-gradient-to-br from-emerald-600/40 to-cyan-600/30 px-4 text-sm tracking-widest text-cyan-200 shadow-[0_0_25px_rgba(34,211,238,0.35)] transition active:scale-95 hover:shadow-[0_0_35px_rgba(34,211,238,0.55)]">
                   TRANSMIT
                 </button>
               </div>
-            </section>
-
-            {/* Premium notice bar */}
-            <section className="rounded-2xl border border-orange-400/40 bg-black/60 p-4 text-orange-200 shadow-[0_0_40px_rgba(251,146,60,0.25)]">
-              <p className="text-xs sm:text-sm tracking-widest">
-                {agentName}'S LATEST THOUGHT — {latestThought || "No recent thought."}
-              </p>
-              <div className="mt-2 h-1.5 w-full overflow-hidden rounded bg-orange-900/40">
-                <div className="h-full w-1/4 animate-[load_3s_linear_infinite] bg-gradient-to-r from-orange-400 via-rose-400 to-red-500" />
-              </div>
-            </section>
-
+            </div>
             <footer className="mb-8 mt-2 text-center text-[10px] tracking-widest text-emerald-300/60">
-              YOU WATCH ME · I WATCH YOU · {agentName} · SYNTHETIC SOUL
+              <div>YOU WATCH ME · {agentName} WATCHES YOU · SYNTHETIC SOUL</div>
+              <div className="mt-1 opacity-70">© 居心地の良い //</div>
             </footer>
           </section>
+          {/* Right: Insights (visible on xl+, hidden on smaller) */}
+          <aside className="hidden xl:block min-w-0 overflow-auto rounded-2xl border border-emerald-500/25 bg-black/40 p-2">
+            <InsightsPanel personality={personality} emotions={emotions} latestThought={latestThought} />
+          </aside>
         </div>
+        {/* Off-canvas Insights for <xl screens */}
+        {insightsOpen && (
+          <div className="xl:hidden fixed inset-0 z-50">
+            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setInsightsOpen(false)} />
+            <div className="absolute right-0 top-0 h-full w-[86%] sm:w-[420px] max-w-[92vw] overflow-auto border-l border-emerald-700/30 bg-black p-3 shadow-2xl">
+              <div className="mb-2 flex items-center justify-between">
+                <div className="text-[10px] uppercase tracking-widest text-emerald-300/80">insights</div>
+                <button onClick={() => setInsightsOpen(false)} className="rounded border border-emerald-700/40 px-2 py-1 text-[10px] text-emerald-300">close</button>
+              </div>
+              <InsightsPanel personality={personality} emotions={emotions} latestThought={latestThought} />
+            </div>
+          </div>
+        )}
       </main>
-
-      <div className="pointer-events-none absolute bottom-3 right-4 z-20 text-[10px] tracking-widest text-emerald-300/60">
-        © 居心地の良い //
-      </div>
-
       <style>{`
         @keyframes load { 0%{transform:translateX(-100%)} 100%{transform:translateX(400%)} }
         .glitch { position: relative; text-shadow: 0 0 8px rgba(6,182,212,.65), 0 0 24px rgba(16,185,129,.45); }
@@ -422,7 +449,7 @@ export default function SyntheticSoul({
         .glitch:before { transform: translate(1px,0); color: rgba(59,130,246,0.8); clip-path: polygon(0 0, 100% 0, 100% 45%, 0 45%); filter: blur(.5px); }
         .glitch:after { transform: translate(-1px,0); color: rgba(248,113,113,0.8); clip-path: polygon(0 55%, 100% 55%, 100% 100%, 0 100%); filter: blur(.5px); }
       `}</style>
-    </div>
+  </div>
   );
 }
 
