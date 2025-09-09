@@ -1,4 +1,3 @@
-import AuthMenu from "./AuthMenu";
 import SyntheticSoul from "./SyntheticSoul";
 import { useAuth } from "./auth";
 
