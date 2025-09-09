@@ -331,12 +331,13 @@ export default function SyntheticSoul({
       <main className="relative z-20 h-[calc(100vh-56px)] w-full px-4 sm:px-6 py-4">
         <div className="
           grid h-full gap-4
+          min-h-0
           grid-cols-1
           lg:grid-cols-[minmax(320px,0.35fr)_1fr]
           xl:grid-cols-[minmax(320px,0.28fr)_1fr_minmax(280px,0.32fr)]
         ">
           {/* LEFT: Agent (no matrices) */}
-          <aside className="hidden lg:block min-w-0 overflow-auto rounded-2xl border border-emerald-500/25 bg-black/40 p-2">
+          <aside className="hidden lg:block min-w-0  overflow-auto rounded-2xl border border-emerald-500/25 bg-black/40 p-2">
               <AgentPanel
               agentName={agentName} 
               expression={currentExpression} 
@@ -351,7 +352,7 @@ export default function SyntheticSoul({
           </aside>
 
           {/* Middle: Chat column */}
-          <section className="min-w-0 grid grid-rows-[auto_1fr_auto] gap-3">
+          <section className="min-w-0 min-h-0 grid grid-rows-[auto_1fr_auto] gap-3">
             {/* Title */} 
             <div className="rounded-xl border border-emerald-400/30 bg-black/50 p-3 shadow-[0_0_40px_rgba(16,185,129,0.25)]">
               <div className="flex items-center justify-between">
@@ -373,7 +374,7 @@ export default function SyntheticSoul({
               <div className="pointer-events-none absolute inset-0 rounded-2xl ring-1 ring-emerald-400/10" />
               <div className="pointer-events-none absolute inset-x-0 top-0 h-16 rounded-t-2xl bg-gradient-to-b from-white/5 to-transparent" />
 
-              <div ref={listRef} className="relative z-10 h-full overflow-y-auto pr-1">
+              <div ref={listRef} className="relative z-10 h-full min-h-0 overflow-y-auto pr-1">
                 {messages.map((m) => (
                   <Message key={m.id} role={m.role} text={m.text} username={activeUsername} agentName={agentName} />
                 ))}
