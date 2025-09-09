@@ -336,7 +336,7 @@ export default function SyntheticSoul({
           xl:grid-cols-[minmax(320px,0.28fr)_1fr_minmax(280px,0.32fr)]
         ">
           {/* LEFT: Agent (no matrices) */}
-          <aside className="min-w-0 overflow-auto rounded-2xl border border-emerald-500/25 bg-black/40 p-2">
+          <aside className="hidden lg:block min-w-0 overflow-auto rounded-2xl border border-emerald-500/25 bg-black/40 p-2">
               <AgentPanel
               agentName={agentName} 
               expression={currentExpression} 
@@ -397,7 +397,7 @@ export default function SyntheticSoul({
 
             {/* Composer row — with a small ticker above input */}
             <div className="grid grid-rows-[auto_auto] gap-2">
-              <section className="xl:hidden rounded-2xl border border-orange-400/40 bg-black/60 p-4 text-orange-200 shadow-[0_0_40px_rgba(251,146,60,0.25)]">
+              <section className="hidden md:block xl:hidden rounded-2xl border border-orange-400/40 bg-black/60 p-4 text-orange-200 shadow-[0_0_40px_rgba(251,146,60,0.25)]">
                 <p className="text-[12px] md:text-sm lg:text-base tracking-widest">
                   {agentName}'S LATEST THOUGHT — {latestThought || "No recent thought."}
                 </p>
@@ -424,7 +424,7 @@ export default function SyntheticSoul({
             </footer>
           </section>
           {/* Right: Insights (visible on xl+, hidden on smaller) */}
-          <aside className="hidden min-w-0 overflow-auto rounded-2xl border border-emerald-500/25 bg-black/40 p-2 xl:block">
+          <aside className="hidden xl:block min-w-0 overflow-auto rounded-2xl border border-emerald-500/25 bg-black/40 p-2">
             <InsightsPanel personality={personality} emotions={emotions} latestThought={latestThought} />
           </aside>
         </div>
