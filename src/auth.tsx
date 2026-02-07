@@ -19,7 +19,7 @@ type AuthState = {
   logout: () => Promise<void>;
   // helpers
   authFetch: (pathOrUrl: string, init?: RequestInit) => Promise<Response>;
-  getAuthHeader: () => Record<string, string>  |  string;
+  getAuthHeader: () => Record<string, string>;
 };
 
 const AuthCtx = createContext<AuthState | null>(null);
@@ -31,10 +31,52 @@ const LS_TOKEN = "ss_token";
 
 // --- helpers ---------------------------------------------------------------
 async function jsonFetch(pathOrUrl: string, init?: RequestInit) {
-  const res = await fetch(url(pathOrUrl), init);
+  const res = await fetch(url(pathOrUrl), {
+    ...init,
+    credentials: init?.credentials ?? "include",
+  });
   const type = res.headers.get("content-type") || "";
   const body = type.includes("application/json") ? await res.json().catch(() => ({})) : await res.text();
   return { res, body };
+}
+
+function mergeHeaders(...parts: Array<HeadersInit | undefined>): Headers {
+  const headers = new Headers();
+  for (const part of parts) {
+    if (!part) continue;
+    const normalized = new Headers(part);
+    normalized.forEach((value, key) => headers.set(key, value));
+  }
+  return headers;
+}
+
+function readCookie(name: string): string | null {
+  if (typeof document === "undefined") return null;
+  const cookies = document.cookie ? document.cookie.split("; ") : [];
+  for (const cookie of cookies) {
+    const idx = cookie.indexOf("=");
+    const k = idx >= 0 ? cookie.slice(0, idx) : cookie;
+    if (k === name) return decodeURIComponent(cookie.slice(idx + 1));
+  }
+  return null;
+}
+
+function extractApiError(body: unknown, status: number, fallback: string): string {
+  if (body && typeof body === "object") {
+    const b = body as Record<string, unknown>;
+    const err = b.error;
+    if (err && typeof err === "object") {
+      const e = err as Record<string, unknown>;
+      const message = typeof e.message === "string" ? e.message : undefined;
+      const code = typeof e.code === "string" ? e.code : undefined;
+      if (message && code) return `${message} (${code})`;
+      if (message) return message;
+      if (code) return code;
+    }
+    if (typeof b.detail === "string") return b.detail;
+  }
+  if (typeof body === "string" && body.trim()) return body;
+  return `${fallback} ${status}`;
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
@@ -42,19 +84,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const getAuthHeader = useCallback(() => (token ? { Authorization: `Bearer ${token}` } : ''), [token]);
+  const getAuthHeader = useCallback((): Record<string, string> => (token ? { Authorization: `Bearer ${token}` } : {}), [token]);
 
   const me = useCallback(async () => {
     if (!token) { setUser(null); return; }
-    const { res, body } = await jsonFetch("/auth/me", { headers: { Accept: "application/json", ...getAuthHeader() } });
-    if (!res.ok) throw new Error(`me ${res.status}`);
+    const { res, body } = await jsonFetch("/auth/me", { headers: mergeHeaders({ Accept: "application/json" }, getAuthHeader()) });
+    if (!res.ok) throw new Error(extractApiError(body, res.status, "me"));
     const u = (body?.user ?? body) as AuthUser;
     setUser(u ?? null);
   }, [token, getAuthHeader]);
 
   const startGuest = useCallback(async () => {
     const { res, body } = await jsonFetch("/auth/guest", { method: "POST", headers: { Accept: "application/json" } });
-    if (!res.ok) throw new Error(`guest ${res.status}`);
+    if (!res.ok) throw new Error(extractApiError(body, res.status, "guest"));
     const t = body?.access_token as string;
     setToken(t); localStorage.setItem(LS_TOKEN, t);
     await me();
@@ -62,9 +104,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const refresh = useCallback(async () => {
     if (!token) return false;
+    const csrf = readCookie("refresh_csrf");
     const { res, body } = await jsonFetch("/auth/refresh", {
       method: "POST",
-      headers: { Accept: "application/json", ...getAuthHeader() }
+      headers: mergeHeaders({ Accept: "application/json" }, csrf ? { "X-CSRF-Token": csrf } : undefined),
     });
     if (!res.ok) return false;
     const t = body?.access_token as string | undefined;
@@ -76,10 +119,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const login = useCallback(async (email: string, password: string) => {
     const { res, body } = await jsonFetch("/auth/login", {
       method: "POST",
-      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      headers: mergeHeaders({ "Content-Type": "application/json", Accept: "application/json" }),
       body: JSON.stringify({ email, password }),
     });
-    if (!res.ok) throw new Error(body?.detail ?? `login ${res.status}`);
+    if (!res.ok) throw new Error(extractApiError(body, res.status, "login"));
     const t = body?.access_token as string;
     setToken(t); localStorage.setItem(LS_TOKEN, t);
     await me();
@@ -88,10 +131,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const claim = useCallback(async (email: string, username: string, password: string) => {
     const { res, body } = await jsonFetch("/auth/claim", {
       method: "POST",
-      headers: { "Content-Type": "application/json", Accept: "application/json", ...getAuthHeader() },
+      headers: mergeHeaders({ "Content-Type": "application/json", Accept: "application/json" }, getAuthHeader()),
       body: JSON.stringify({ email, username, password }),
     });
-    if (!res.ok) throw new Error(body?.detail ?? `claim ${res.status}`);
+    if (!res.ok) throw new Error(extractApiError(body, res.status, "claim"));
     const t = body?.access_token as string;
     setToken(t); localStorage.setItem(LS_TOKEN, t);
     await me();
@@ -99,7 +142,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const logout = useCallback(async () => {
     if (token) {
-      await jsonFetch("/auth/logout", { method: "POST", headers: { Accept: "application/json", ...getAuthHeader() } }).catch(() => {});
+      await jsonFetch("/auth/logout", { method: "POST", headers: mergeHeaders({ Accept: "application/json" }, getAuthHeader()) }).catch(() => {});
     }
     localStorage.removeItem(LS_TOKEN);
     setToken(null);
@@ -111,7 +154,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const authFetch = useCallback(async (pathOrUrl: string, init: RequestInit = {}) => {
     const doFetch = () => fetch(url(pathOrUrl), {
       ...init,
-      headers: { ...(init.headers || {}), ...getAuthHeader() },
+      credentials: init.credentials ?? "include",
+      headers: mergeHeaders(init.headers, getAuthHeader()),
     });
     let r = await doFetch();
     if (r.status === 401) {

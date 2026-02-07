@@ -8,6 +8,10 @@ export type AskResult = {
 };
 
 const AGENT_API_BASE = import.meta.env.VITE_SYNTHETIC_SOUL_BASE_URL || "";
+const MESSAGE_TYPE = ((): "dm" | "group" => {
+  const raw = (import.meta.env.VITE_SYNTHETIC_SOUL_DM_TYPE || "dm").toString().trim().toLowerCase();
+  return raw === "group" ? "group" : "dm";
+})();
 
 export default function App() {
   const { authFetch } = useAuth();
@@ -29,6 +33,23 @@ export default function App() {
   }
 
   // Helper: poll job status with backoff + optional Retry-After
+  async function apiErrorFromResponse(res: Response, fallback: string): Promise<string> {
+    const type = res.headers.get("content-type") || "";
+    if (type.includes("application/json")) {
+      const body = await res.json().catch(() => ({}));
+      const error = body?.error;
+      const message = error?.message || body?.detail;
+      const code = error?.code;
+      if (message && code) return `${message} (${code})`;
+      if (message) return message;
+      if (code) return String(code);
+    } else {
+      const text = await res.text().catch(() => "");
+      if (text) return text;
+    }
+    return `${fallback} (${res.status})`;
+  }
+
   async function pollJob(statusUrl: string, signal?: AbortSignal): Promise<AskResult> {
     let attempt = 0;
     const maxAttempts = 40;             // ~2–3 minutes depending on backoff
@@ -38,8 +59,8 @@ export default function App() {
       if (signal?.aborted) throw new Error("aborted");
       const res = await authFetch(statusUrl, { headers: { "Accept": "application/json" }, signal });
 
-      if (res.status === 404) throw new Error("Job not found");
-      if (!res.ok) throw new Error(`Status fetch failed (${res.status})`);
+      if (res.status === 404) throw new Error(await apiErrorFromResponse(res, "Job not found"));
+      if (!res.ok) throw new Error(await apiErrorFromResponse(res, "Status fetch failed"));
 
       const data = await res.json(); // { job_id, status, progress?, result?, error? }
       const st = (data.status || "").toLowerCase();
@@ -75,7 +96,7 @@ export default function App() {
     const submitRes = await authFetch(`${AGENT_API_BASE}/messages/submit`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message: input, type: import.meta.env.VITE_SYNTHETIC_SOUL_DM_TYPE }),
+      body: JSON.stringify({ message: input, type: MESSAGE_TYPE }),
       signal
     });
 
@@ -86,19 +107,24 @@ export default function App() {
     }
 
     if (submitRes.status !== 202) {
-      const text = await submitRes.text();
-      throw new Error(`HTTP ${submitRes.status} – ${text}`);
+      throw new Error(await apiErrorFromResponse(submitRes, "Submit failed"));
     }
 
     // 2) Get job_id + status URL
     const { job_id } = await submitRes.json();
     if (!job_id) throw new Error("No job_id in 202 response");
 
-     // Prefer Location header if present; otherwise construct from env/base path
-    const locHeader = submitRes.headers.get("Location"); // e.g., /jobs/<id>
-    const statusUrl = locHeader?.startsWith("http")
-      ? locHeader
-      : `${AGENT_API_BASE}/jobs/${job_id}`;
+    // Prefer Location header if present; otherwise construct from env/base path.
+    const locHeader = submitRes.headers.get("Location");
+    const statusUrl = (() => {
+      if (!locHeader) return `${AGENT_API_BASE}/jobs/${job_id}`;
+      if (locHeader.startsWith("http")) return locHeader;
+      try {
+        return new URL(locHeader, AGENT_API_BASE || window.location.origin).toString();
+      } catch {
+        return `${AGENT_API_BASE}/jobs/${job_id}`;
+      }
+    })();
 
     // 3) Poll until done
     return await pollJob(statusUrl, signal);

@@ -90,7 +90,7 @@ Create a `.env` file with:
 
 ```env
 VITE_SYNTHETIC_SOUL_BASE_URL=https://your-api-base-url/v1
-VITE_SYNTHETIC_SOUL_DM_TYPE=default   # or "chat", depending on your API
+VITE_SYNTHETIC_SOUL_DM_TYPE=dm   # "dm" or "group"
 ```
 
 ### 4. Run Dev Server
@@ -120,12 +120,13 @@ npm run build
   * `startGuest()` → POST `/auth/guest`
   * `login(email, password)`
   * `claim(email, username, password)`
-  * `refresh()` → POST `/auth/refresh`
+  * `refresh()` → POST `/auth/refresh` with `X-CSRF-Token` from `refresh_csrf` cookie
   * `logout()` → clears token and starts a new guest
 
 The `authFetch` helper automatically:
 
 * Attaches the Bearer token
+* Sends credentials (`credentials: include`) for cookie-based refresh support
 * Retries once if a request fails with 401 (after refresh)
 
 ---
