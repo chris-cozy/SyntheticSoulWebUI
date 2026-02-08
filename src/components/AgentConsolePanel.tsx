@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 export type ScalarDim = {
   description?: string;
@@ -121,6 +121,37 @@ export default function AgentConsolePanel({
 }: AgentConsolePanelProps) {
   const expressionName = expression?.trim() || DEFAULT_EXPRESSION;
   const [activeTab, setActiveTab] = useState<"description" | "matrix" | "status">("description");
+  const [typedIdentity, setTypedIdentity] = useState("");
+  const [typingIdentity, setTypingIdentity] = useState(false);
+  const identityText = (identity && identity.trim()) || "NO DOSSIER DATA AVAILABLE.";
+
+  useEffect(() => {
+    setTypedIdentity("");
+    setTypingIdentity(true);
+
+    const full = identityText;
+    const tickSize = full.length > 260 ? 3 : 1;
+    const tickDelay = 11;
+    let index = 0;
+    let timerId: number | null = null;
+
+    const tick = () => {
+      index = Math.min(full.length, index + tickSize);
+      setTypedIdentity(full.slice(0, index));
+
+      if (index < full.length) {
+        timerId = window.setTimeout(tick, tickDelay);
+      } else {
+        setTypingIdentity(false);
+      }
+    };
+
+    timerId = window.setTimeout(tick, tickDelay);
+
+    return () => {
+      if (timerId != null) window.clearTimeout(timerId);
+    };
+  }, [identityText]);
 
   return (
     <section className="ss-agent-console" aria-label="Agent Console Panel">
@@ -180,8 +211,9 @@ export default function AgentConsolePanel({
         <div className="ss-tab-panel">
           {activeTab === "description" ? (
             <div className="ss-description-panel">
-              <p className="ss-dossier-text ss-dossier-plain" title={identity || undefined}>
-                {identity || "NO DOSSIER DATA AVAILABLE."}
+              <p className="ss-dossier-text ss-dossier-plain" title={identityText}>
+                {typedIdentity}
+                {typingIdentity && <span className="ss-cursor">█</span>}
               </p>
             </div>
           ) : activeTab === "matrix" ? (

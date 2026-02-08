@@ -5,6 +5,7 @@ export type ChatMessage = {
   role: "user" | "assistant" | "system";
   text: string;
   createdAt?: number;
+  animateOnMount?: boolean;
 };
 
 type TerminalChatLogProps = {
@@ -29,9 +30,87 @@ export default function TerminalChatLog({ messages, typing, live }: TerminalChat
     };
   }, []);
 
+  function animationPacing(message: ChatMessage) {
+    const tickSize = message.text.length > 240 ? 3 : 1;
+    const tickDelay = message.role === "user" ? 10 : message.role === "assistant" ? 14 : 12;
+    const totalMs = Math.max(120, Math.ceil(Math.max(1, message.text.length) / tickSize) * tickDelay + 140);
+    return { tickSize, tickDelay, totalMs };
+  }
+
+  function startMessageAnimation(message: ChatMessage, initialDelayMs = 0) {
+    const id = String(message.id);
+    const fullText = message.text;
+    const { tickSize, tickDelay } = animationPacing(message);
+
+    knownIdsRef.current.add(id);
+
+    const existingTimer = timersRef.current.get(id);
+    if (existingTimer) {
+      window.clearTimeout(existingTimer);
+      timersRef.current.delete(id);
+    }
+
+    setRenderedById((prev) => ({ ...prev, [id]: "" }));
+    setAnimatingById((prev) => ({ ...prev, [id]: true }));
+
+    if (fullText.length === 0) {
+      setAnimatingById((prev) => ({ ...prev, [id]: false }));
+      return;
+    }
+
+    let index = 0;
+    const tick = () => {
+      index = Math.min(fullText.length, index + tickSize);
+      setRenderedById((prev) => ({ ...prev, [id]: fullText.slice(0, index) }));
+
+      if (index < fullText.length) {
+        const timer = window.setTimeout(tick, tickDelay);
+        timersRef.current.set(id, timer);
+        return;
+      }
+
+      timersRef.current.delete(id);
+      setAnimatingById((prev) => ({ ...prev, [id]: false }));
+    };
+
+    const timer = window.setTimeout(tick, Math.max(tickDelay, initialDelayMs));
+    timersRef.current.set(id, timer);
+  }
+
   useEffect(() => {
     if (!initializedRef.current) {
       if (messages.length === 0) return;
+
+      const introMessages = messages.filter((message) => message.animateOnMount);
+      if (introMessages.length > 0) {
+        const seededRendered: Record<string, string> = {};
+        const seededKnown = new Set<string>();
+        const seededAnimating: Record<string, boolean> = {};
+
+        messages.forEach((message) => {
+          const id = String(message.id);
+          seededKnown.add(id);
+
+          if (message.animateOnMount) {
+            seededRendered[id] = "";
+            seededAnimating[id] = true;
+          } else {
+            seededRendered[id] = message.text;
+          }
+        });
+
+        knownIdsRef.current = seededKnown;
+        setRenderedById(seededRendered);
+        setAnimatingById(seededAnimating);
+
+        let offsetMs = 0;
+        introMessages.forEach((message) => {
+          startMessageAnimation(message, offsetMs);
+          offsetMs += animationPacing(message).totalMs;
+        });
+        initializedRef.current = true;
+        return;
+      }
 
       const seededRendered: Record<string, string> = {};
       const seededKnown = new Set<string>();
@@ -52,6 +131,35 @@ export default function TerminalChatLog({ messages, typing, live }: TerminalChat
 
     // History refreshes can append many messages at once. Render those immediately.
     if (newMessages.length > 1) {
+      const introMessages = newMessages.filter((message) => message.animateOnMount);
+
+      if (introMessages.length > 0) {
+        setRenderedById((prev) => {
+          const next = { ...prev };
+          newMessages.forEach((message) => {
+            const id = String(message.id);
+            knownIdsRef.current.add(id);
+            next[id] = message.animateOnMount ? "" : message.text;
+          });
+          return next;
+        });
+
+        setAnimatingById((prev) => {
+          const next = { ...prev };
+          introMessages.forEach((message) => {
+            next[String(message.id)] = true;
+          });
+          return next;
+        });
+
+        let offsetMs = 0;
+        introMessages.forEach((message) => {
+          startMessageAnimation(message, offsetMs);
+          offsetMs += animationPacing(message).totalMs;
+        });
+        return;
+      }
+
       setRenderedById((prev) => {
         const next = { ...prev };
         newMessages.forEach((message) => {
@@ -64,46 +172,7 @@ export default function TerminalChatLog({ messages, typing, live }: TerminalChat
       return;
     }
 
-    const message = newMessages[0];
-    const id = String(message.id);
-    const fullText = message.text;
-    const tickSize = fullText.length > 240 ? 3 : 1;
-    const tickDelay = message.role === "user" ? 10 : message.role === "assistant" ? 14 : 12;
-
-    knownIdsRef.current.add(id);
-
-    if (fullText.length === 0) {
-      setRenderedById((prev) => ({ ...prev, [id]: "" }));
-      setAnimatingById((prev) => ({ ...prev, [id]: false }));
-      return;
-    }
-
-    const existingTimer = timersRef.current.get(id);
-    if (existingTimer) {
-      window.clearTimeout(existingTimer);
-      timersRef.current.delete(id);
-    }
-
-    setRenderedById((prev) => ({ ...prev, [id]: "" }));
-    setAnimatingById((prev) => ({ ...prev, [id]: true }));
-
-    let index = 0;
-    const tick = () => {
-      index = Math.min(fullText.length, index + tickSize);
-      setRenderedById((prev) => ({ ...prev, [id]: fullText.slice(0, index) }));
-
-      if (index < fullText.length) {
-        const timer = window.setTimeout(tick, tickDelay);
-        timersRef.current.set(id, timer);
-        return;
-      }
-
-      timersRef.current.delete(id);
-      setAnimatingById((prev) => ({ ...prev, [id]: false }));
-    };
-
-    const timer = window.setTimeout(tick, tickDelay);
-    timersRef.current.set(id, timer);
+    startMessageAnimation(newMessages[0]);
   }, [messages]);
 
   useEffect(() => {
@@ -118,9 +187,10 @@ export default function TerminalChatLog({ messages, typing, live }: TerminalChat
           const renderedText = renderedById[id] ?? message.text;
           const isAnimating = !!animatingById[id];
           const lineText = message.role === "user" ? `>> ${renderedText}` : renderedText;
+          const entryClass = `ss-log-entry ss-log-${message.role}${message.animateOnMount ? " ss-log-no-entry-motion" : ""}`;
 
           return (
-            <article key={message.id} className={`ss-log-entry ss-log-${message.role}`}>
+            <article key={message.id} className={entryClass}>
               <p className="ss-log-text">
                 {lineText}
                 {isAnimating && <span className="ss-cursor">█</span>}

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { AskResult } from "./App";
 import AuthMenu from "./AuthMenu";
 import { useAuth } from "./auth";
@@ -16,6 +16,7 @@ const AGENT_API_BASE = (import.meta.env.VITE_SYNTHETIC_SOUL_BASE_URL || "")
   .replace(/\/+$/, "");
 
 const LOCAL_EXPRESSION_TTL_MS = 12_000;
+const API_RETRY_INTERVAL_SEC = 10;
 const BOOT_LINES = [
   "[BOOT] SYNTHETIC SOUL CORE READY",
   "[BOOT] CRT DISPLAY BUS ONLINE",
@@ -50,6 +51,9 @@ export default function SyntheticSoul({
   const [loginPassword, setLoginPassword] = useState("");
   const [accessBusy, setAccessBusy] = useState(false);
   const [accessError, setAccessError] = useState<string | null>(null);
+  const [apiStatus, setApiStatus] = useState<"checking" | "online" | "offline">("checking");
+  const [typedApiStatus, setTypedApiStatus] = useState("");
+  const [autoRetryCountdown, setAutoRetryCountdown] = useState<number | null>(null);
 
   const [input, setInput] = useState("");
   const [typing, setTyping] = useState(false);
@@ -74,6 +78,7 @@ export default function SyntheticSoul({
   const currentExpression = localExpression ?? globalExpression;
   const normalizedAgentName = agentName || "SYNTHETIC SOUL";
   const isConsoleReady = startupPhase === "ready";
+  const accessAuthDisabled = accessBusy || apiStatus !== "online";
 
   const suggestedPrompts = useMemo(
     () => [
@@ -83,6 +88,40 @@ export default function SyntheticSoul({
       `What should ${normalizedAgentName} focus on next?`,
     ],
     [normalizedAgentName]
+  );
+
+  const apiStatusMessage = useMemo(() => {
+    if (apiStatus === "online") return "BACKEND LINK STABLE. AUTH ACTIONS ENABLED.";
+    if (apiStatus === "checking") return "CHECKING BACKEND LINK...";
+    return "BACKEND LINK OFFLINE. LOGIN AND GUEST ACCESS DISABLED.";
+  }, [apiStatus]);
+
+  const checkApiAvailability = useCallback(
+    async (showChecking = false) => {
+      if (showChecking) setApiStatus("checking");
+
+      const controller = new AbortController();
+      const timeoutId = window.setTimeout(() => controller.abort(), 4500);
+
+      try {
+        const res = await fetch(api("/meta/version"), {
+          method: "GET",
+          headers: { Accept: "application/json" },
+          credentials: "include",
+          signal: controller.signal,
+        });
+
+        const reachable = res.status < 500;
+        setApiStatus(reachable ? "online" : "offline");
+        return reachable;
+      } catch {
+        setApiStatus("offline");
+        return false;
+      } finally {
+        window.clearTimeout(timeoutId);
+      }
+    },
+    []
   );
 
   useEffect(() => {
@@ -127,6 +166,68 @@ export default function SyntheticSoul({
       setAccessError(null);
     }
   }, [startupPhase, token]);
+
+  useEffect(() => {
+    if (startupPhase !== "access") {
+      setTypedApiStatus("");
+      return;
+    }
+
+    setTypedApiStatus("");
+    let index = 0;
+    let timerId: number | null = null;
+
+    const tick = () => {
+      index = Math.min(apiStatusMessage.length, index + 1);
+      setTypedApiStatus(apiStatusMessage.slice(0, index));
+
+      if (index < apiStatusMessage.length) {
+        timerId = window.setTimeout(tick, 12);
+      }
+    };
+
+    timerId = window.setTimeout(tick, 12);
+
+    return () => {
+      if (timerId != null) window.clearTimeout(timerId);
+    };
+  }, [startupPhase, apiStatusMessage]);
+
+  useEffect(() => {
+    if (loading) return;
+    void checkApiAvailability(true);
+  }, [loading, checkApiAvailability]);
+
+  useEffect(() => {
+    if (startupPhase !== "access") return;
+    void checkApiAvailability(true);
+  }, [startupPhase, checkApiAvailability]);
+
+  useEffect(() => {
+    if (startupPhase !== "access" || apiStatus !== "offline") {
+      setAutoRetryCountdown(null);
+      return;
+    }
+
+    setAutoRetryCountdown(API_RETRY_INTERVAL_SEC);
+
+    const countdownInterval = window.setInterval(() => {
+      setAutoRetryCountdown((prev) => {
+        if (prev == null) return API_RETRY_INTERVAL_SEC;
+        return prev <= 0 ? 0 : prev - 1;
+      });
+    }, 1_000);
+
+    const retryInterval = window.setInterval(() => {
+      setAutoRetryCountdown(API_RETRY_INTERVAL_SEC);
+      void checkApiAvailability();
+    }, API_RETRY_INTERVAL_SEC * 1_000);
+
+    return () => {
+      window.clearInterval(countdownInterval);
+      window.clearInterval(retryInterval);
+    };
+  }, [startupPhase, apiStatus, checkApiAvailability]);
 
   useEffect(() => {
     if (!isConsoleReady || !token) return;
@@ -178,12 +279,14 @@ export default function SyntheticSoul({
           role: "system",
           text: `VERSION ${apiVersion || "--"} // SECURE CHANNEL ACTIVE // ${activeUsername || "GUEST"}`,
           createdAt: bootTs,
+          animateOnMount: true,
         },
         {
           id: `welcome-${bootTs + 1}`,
           role: "assistant",
           text: `WELCOME, USER. I AM ${normalizedAgentName}. SHARE YOUR NEXT THOUGHT.`,
           createdAt: bootTs + 1,
+          animateOnMount: true,
         },
       ]);
 
@@ -314,6 +417,10 @@ export default function SyntheticSoul({
 
   async function continueAsGuest() {
     if (accessBusy) return;
+    if (apiStatus !== "online") {
+      setAccessError("BACKEND UNAVAILABLE. GUEST ACCESS IS DISABLED UNTIL LINK RESTORES.");
+      return;
+    }
 
     setAccessBusy(true);
     setAccessError(null);
@@ -332,6 +439,10 @@ export default function SyntheticSoul({
 
   async function submitLogin() {
     if (accessBusy) return;
+    if (apiStatus !== "online") {
+      setAccessError("BACKEND UNAVAILABLE. LOGIN IS DISABLED UNTIL LINK RESTORES.");
+      return;
+    }
 
     if (!loginEmail.trim() || !loginPassword) {
       setAccessError("EMAIL AND PASSWORD ARE REQUIRED.");
@@ -449,6 +560,30 @@ export default function SyntheticSoul({
             {startupPhase === "access" && (
               <div className="ss-access-panel">
                 <div className="ss-access-title">AUTHORIZATION REQUIRED</div>
+                <div
+                  className={`ss-api-status ss-api-status-${apiStatus}`}
+                  role="status"
+                  aria-live="polite"
+                >
+                  {typedApiStatus}
+                  {typedApiStatus.length < apiStatusMessage.length && <span className="ss-cursor">█</span>}
+                </div>
+
+                {apiStatus !== "online" && (
+                  <div className="ss-api-actions">
+                    <button
+                      type="button"
+                      className="ss-access-btn ss-retry-btn"
+                      onClick={() => void checkApiAvailability(true)}
+                      disabled={accessBusy}
+                    >
+                      RETRY LINK CHECK
+                    </button>
+                    <span className="ss-api-auto">
+                      AUTO-RETRY ACTIVE ({Math.max(0, autoRetryCountdown ?? API_RETRY_INTERVAL_SEC)}s)
+                    </span>
+                  </div>
+                )}
 
                 {accessMode === "menu" ? (
                   <div className="ss-access-actions">
@@ -470,7 +605,7 @@ export default function SyntheticSoul({
                         setAccessMode("login");
                         setAccessError(null);
                       }}
-                      disabled={accessBusy}
+                      disabled={accessAuthDisabled}
                     >
                       LOGIN TO ACCOUNT
                     </button>
@@ -479,7 +614,7 @@ export default function SyntheticSoul({
                       type="button"
                       className="ss-access-btn"
                       onClick={continueAsGuest}
-                      disabled={accessBusy}
+                      disabled={accessAuthDisabled}
                     >
                       CONTINUE AS GUEST
                     </button>
@@ -493,6 +628,7 @@ export default function SyntheticSoul({
                       value={loginEmail}
                       onChange={(event) => setLoginEmail(event.target.value)}
                       autoComplete="email"
+                      disabled={accessAuthDisabled}
                     />
 
                     <label htmlFor="startup-password">PASSWORD</label>
@@ -502,6 +638,7 @@ export default function SyntheticSoul({
                       value={loginPassword}
                       onChange={(event) => setLoginPassword(event.target.value)}
                       autoComplete="current-password"
+                      disabled={accessAuthDisabled}
                       onKeyDown={(event) => {
                         if (event.key === "Enter") {
                           event.preventDefault();
@@ -526,7 +663,7 @@ export default function SyntheticSoul({
                         type="button"
                         className="ss-access-btn"
                         onClick={() => void submitLogin()}
-                        disabled={accessBusy}
+                        disabled={accessAuthDisabled}
                       >
                         {accessBusy ? "VERIFYING..." : "ENTER"}
                       </button>

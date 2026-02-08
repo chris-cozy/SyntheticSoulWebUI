@@ -28,6 +28,12 @@ All notable changes to this project are documented in this file.
 - Per-message terminal typing/typewriter animation for newly appended chat messages.
 - Agent profile diagnostics tab system with `SELF - PERCEPTION`, `MATRIX`, and `STATUS` tabs.
 - Additional profile metadata field for current agent expression under latency.
+- Startup access portal backend-link monitoring with an inline terminal-style status panel (`checking`, `online`, `offline`).
+- Manual `RETRY LINK CHECK` action when backend is unavailable.
+- Auto-retry countdown display that shows live seconds remaining until the next backend reachability probe.
+- Typewriter animation for startup access status messaging.
+- Typewriter animation for `SELF - PERCEPTION` agent text content.
+- Explicit `animateOnMount` support for chat messages to target startup intro lines for deterministic typing behavior.
 
 ### Changed
 
@@ -47,6 +53,9 @@ All notable changes to this project are documented in this file.
 - Left profile panel behavior refined to minimize whole-panel scrolling by moving profile text and diagnostics into tabbed content.
 - `SELF - PERCEPTION` text now uses the diagnostics panel boundary without an extra inner outline.
 - Auth bootstrap/logout behavior updated to avoid implicit guest creation and defer access mode selection to the startup portal.
+- Disabled `LOGIN TO ACCOUNT` and `CONTINUE AS GUEST` while the backend is unavailable or link status is still checking.
+- Access portal now performs recurring backend reachability checks while offline and re-enables auth actions automatically when connectivity returns.
+- Startup intro chat lines (`VERSION ...` and welcome line) now load with typing effect only (without entry-motion animation).
 
 ### Fixed
 
@@ -54,3 +63,5 @@ All notable changes to this project are documented in this file.
 - Fixed startup boot sequence hang introduced during auto-skip work:
   - corrected boot effect lifecycle so interval/timers are not canceled after the first tick in dev/Strict Mode
   - ensured post-boot transition consistently advances to `ready` (active session) or `access` (no session).
+- Fixed startup intro message typing not triggering when messages were inserted in batch updates.
+- Fixed startup intro lines still showing entry animation by removing that motion for `animateOnMount` lines.

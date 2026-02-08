@@ -139,6 +139,50 @@ body,
   font-size: 0.75rem;
 }
 
+.ss-api-status {
+  border: 1px solid rgba(94, 255, 199, 0.28);
+  background: rgba(5, 14, 11, 0.84);
+  color: var(--ss-text-dim);
+  font-size: 0.65rem;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  padding: 0.42rem 0.52rem;
+}
+
+.ss-api-status-online {
+  border-color: rgba(102, 255, 201, 0.4);
+  color: #bcffe1;
+}
+
+.ss-api-status-checking {
+  border-color: rgba(133, 225, 255, 0.44);
+  color: #b7eaff;
+}
+
+.ss-api-status-offline {
+  border-color: rgba(255, 154, 136, 0.5);
+  color: #ffd0c7;
+}
+
+.ss-api-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.55rem;
+}
+
+.ss-retry-btn {
+  min-height: 1.95rem;
+  padding-inline: 0.72rem;
+}
+
+.ss-api-auto {
+  font-size: 0.6rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ss-text-dim);
+}
+
 .ss-access-actions {
   display: grid;
   gap: 0.45rem;
@@ -648,6 +692,10 @@ body,
   background: transparent;
   color: #d8ffee;
   animation: ss-entry-glow 260ms ease;
+}
+
+.ss-log-no-entry-motion {
+  animation: none;
 }
 
 .ss-log-user {
