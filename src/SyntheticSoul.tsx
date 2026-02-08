@@ -1,34 +1,63 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
-import AgentPanel from "./AgentPanel";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { AskResult } from "./App";
-import { useAuth } from "./auth";
-import InsightsPanel from "./InsightsPanel";
 import AuthMenu from "./AuthMenu";
-
-type ScalarDim = { description?: string; value: number; min?: number; max?: number };
-type PersonalityMatrix = Record<string, ScalarDim>;
-type EmotionMatrix = Record<string, ScalarDim>;
+import { useAuth } from "./auth";
+import AgentConsolePanel from "./components/AgentConsolePanel";
+import type { EmotionMatrix, PersonalityMatrix } from "./components/AgentConsolePanel";
+import HeaderBanner from "./components/HeaderBanner";
+import LatestThoughtTicker from "./components/LatestThoughtTicker";
+import SuggestedPromptChips from "./components/SuggestedPromptChips";
+import TerminalChatLog from "./components/TerminalChatLog";
+import type { ChatMessage } from "./components/TerminalChatLog";
+import TerminalInputBar from "./components/TerminalInputBar";
 
 const AGENT_API_BASE = (import.meta.env.VITE_SYNTHETIC_SOUL_BASE_URL || "")
   .toString()
-  .replace(/\/+$/, "");;
+  .replace(/\/+$/, "");
 
-const LOCAL_EXPRESSION_TTL_MS = 12000; // 12 seconds
+const LOCAL_EXPRESSION_TTL_MS = 12_000;
+const API_RETRY_INTERVAL_SEC = 10;
+const BOOT_LINES = [
+  "[BOOT] SYNTHETIC SOUL CORE READY",
+  "[BOOT] CRT DISPLAY BUS ONLINE",
+  "[BOOT] ENCRYPTION HANDSHAKE STABLE",
+  "[BOOT] AGENT MEMORY PARTITIONS MOUNTED",
+  "[BOOT] MESSAGE ROUTER LINKED",
+  "[BOOT] AWAITING USER AUTHORIZATION",
+] as const;
 
 const api = (path: string) => `${AGENT_API_BASE}${path}`;
+
+type StartupPhase = "boot" | "access" | "ready";
+
+function toErrorMessage(error: unknown) {
+  if (error instanceof Error && error.message.trim()) return error.message;
+  return "ACCESS DENIED. TRY AGAIN.";
+}
 
 export default function SyntheticSoul({
   onAsk,
 }: {
   onAsk?: (input: string) => Promise<AskResult>;
 }) {
-  const { token, user, authFetch } = useAuth();
+  const { token, user, loading, authFetch, startGuest, login } = useAuth();
   const activeUsername = user?.username;
+
+  const [startupPhase, setStartupPhase] = useState<StartupPhase>("boot");
+  const [bootLineCount, setBootLineCount] = useState(0);
+
+  const [accessMode, setAccessMode] = useState<"menu" | "login">("menu");
+  const [loginEmail, setLoginEmail] = useState("");
+  const [loginPassword, setLoginPassword] = useState("");
+  const [accessBusy, setAccessBusy] = useState(false);
+  const [accessError, setAccessError] = useState<string | null>(null);
+  const [apiStatus, setApiStatus] = useState<"checking" | "online" | "offline">("checking");
+  const [typedApiStatus, setTypedApiStatus] = useState("");
+  const [autoRetryCountdown, setAutoRetryCountdown] = useState<number | null>(null);
 
   const [input, setInput] = useState("");
   const [typing, setTyping] = useState(false);
   const [live, setLive] = useState("");
-  const listRef = useRef<HTMLDivElement | null>(null);
 
   const [agentMBTI, setAgentMBTI] = useState<string | undefined>(undefined);
   const [agentIdentity, setAgentIdentity] = useState<string | undefined>(undefined);
@@ -37,155 +66,326 @@ export default function SyntheticSoul({
   const [latestThought, setLatestThought] = useState<string>("");
   const [agentLoaded, setAgentLoaded] = useState(false);
   const [agentName, setAgentName] = useState<string>("");
-  const [apiVersion, setApiVersion] = useState<string>("")
+  const [apiVersion, setApiVersion] = useState<string>("");
 
   const [globalExpression, setGlobalExpression] = useState<string | undefined>(undefined);
   const [localExpression, setLocalExpression] = useState<string | undefined>(undefined);
   const [lastLatency, setLastLatency] = useState<number | undefined>(undefined);
-  const [insightsOpen, setInsightsOpen] = useState(false); 
 
-   const [messages, setMessages] = useState<
-    { id: number | string; role: "user" | "assistant" | "system"; text: string }[]
-  >([]);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [mobileConsoleOpen, setMobileConsoleOpen] = useState(false);
 
-  /** Expressions */
   const currentExpression = localExpression ?? globalExpression;
+  const normalizedAgentName = agentName || "SYNTHETIC SOUL";
+  const isConsoleReady = startupPhase === "ready";
+  const accessAuthDisabled = accessBusy || apiStatus !== "online";
 
-  /** Local Expression TTL */
+  const suggestedPrompts = useMemo(
+    () => [
+      `Give me your current emotional status summary.`,
+      `What is your latest thought process right now?`,
+      `Show me your personality matrix highlights.`,
+      `What should ${normalizedAgentName} focus on next?`,
+    ],
+    [normalizedAgentName]
+  );
+
+  const apiStatusMessage = useMemo(() => {
+    if (apiStatus === "online") return "BACKEND LINK STABLE. AUTH ACTIONS ENABLED.";
+    if (apiStatus === "checking") return "CHECKING BACKEND LINK...";
+    return "BACKEND LINK OFFLINE. LOGIN AND GUEST ACCESS DISABLED.";
+  }, [apiStatus]);
+
+  const checkApiAvailability = useCallback(
+    async (showChecking = false) => {
+      if (showChecking) setApiStatus("checking");
+
+      const controller = new AbortController();
+      const timeoutId = window.setTimeout(() => controller.abort(), 4500);
+
+      try {
+        const res = await fetch(api("/meta/version"), {
+          method: "GET",
+          headers: { Accept: "application/json" },
+          credentials: "include",
+          signal: controller.signal,
+        });
+
+        const reachable = res.status < 500;
+        setApiStatus(reachable ? "online" : "offline");
+        return reachable;
+      } catch {
+        setApiStatus("offline");
+        return false;
+      } finally {
+        window.clearTimeout(timeoutId);
+      }
+    },
+    []
+  );
+
+  useEffect(() => {
+    if (loading) return;
+    if (startupPhase !== "boot") return;
+
+    setBootLineCount(0);
+
+    const hasActiveSession = Boolean(token && user);
+    let lineIndex = 0;
+    let finishTimer: number | null = null;
+
+    const interval = window.setInterval(() => {
+      lineIndex += 1;
+      setBootLineCount(Math.min(BOOT_LINES.length, lineIndex));
+
+      if (lineIndex >= BOOT_LINES.length) {
+        window.clearInterval(interval);
+        finishTimer = window.setTimeout(
+          () => setStartupPhase(hasActiveSession ? "ready" : "access"),
+          520
+        );
+      }
+    }, 260);
+
+    return () => {
+      window.clearInterval(interval);
+      if (finishTimer != null) window.clearTimeout(finishTimer);
+    };
+  }, [loading, token, user, startupPhase]);
+
   useEffect(() => {
     if (localExpression == null) return;
     const id = setTimeout(() => setLocalExpression(undefined), LOCAL_EXPRESSION_TTL_MS);
     return () => clearTimeout(id);
   }, [localExpression]);
 
-  /** Populate version */
   useEffect(() => {
+    if (startupPhase === "ready" && !token) {
+      setStartupPhase("access");
+      setAccessMode("menu");
+      setAccessError(null);
+    }
+  }, [startupPhase, token]);
+
+  useEffect(() => {
+    if (startupPhase !== "access") {
+      setTypedApiStatus("");
+      return;
+    }
+
+    setTypedApiStatus("");
+    let index = 0;
+    let timerId: number | null = null;
+
+    const tick = () => {
+      index = Math.min(apiStatusMessage.length, index + 1);
+      setTypedApiStatus(apiStatusMessage.slice(0, index));
+
+      if (index < apiStatusMessage.length) {
+        timerId = window.setTimeout(tick, 12);
+      }
+    };
+
+    timerId = window.setTimeout(tick, 12);
+
+    return () => {
+      if (timerId != null) window.clearTimeout(timerId);
+    };
+  }, [startupPhase, apiStatusMessage]);
+
+  useEffect(() => {
+    if (loading) return;
+    void checkApiAvailability(true);
+  }, [loading, checkApiAvailability]);
+
+  useEffect(() => {
+    if (startupPhase !== "access") return;
+    void checkApiAvailability(true);
+  }, [startupPhase, checkApiAvailability]);
+
+  useEffect(() => {
+    if (startupPhase !== "access" || apiStatus !== "offline") {
+      setAutoRetryCountdown(null);
+      return;
+    }
+
+    setAutoRetryCountdown(API_RETRY_INTERVAL_SEC);
+
+    const countdownInterval = window.setInterval(() => {
+      setAutoRetryCountdown((prev) => {
+        if (prev == null) return API_RETRY_INTERVAL_SEC;
+        return prev <= 0 ? 0 : prev - 1;
+      });
+    }, 1_000);
+
+    const retryInterval = window.setInterval(() => {
+      setAutoRetryCountdown(API_RETRY_INTERVAL_SEC);
+      void checkApiAvailability();
+    }, API_RETRY_INTERVAL_SEC * 1_000);
+
+    return () => {
+      window.clearInterval(countdownInterval);
+      window.clearInterval(retryInterval);
+    };
+  }, [startupPhase, apiStatus, checkApiAvailability]);
+
+  useEffect(() => {
+    if (!isConsoleReady || !token) return;
+
     let cancelled = false;
 
     async function loadVersion() {
-      try{
+      try {
         const res = await authFetch(api(`/meta/version`), {
           headers: { Accept: "application/json" },
         });
-        if (!res.ok) return; // silently ignore if no history yet
+        if (!res.ok) return;
+
         const data = await res.json();
-        const version: string = data?.version || ""
+        const version: string = data?.version || "";
         if (cancelled) return;
 
         setApiVersion(version);
       } catch {
-        /* ignore */
+        // Ignore missing metadata endpoint.
       }
     }
 
     loadVersion();
-  }, []);
+    return () => {
+      cancelled = true;
+    };
+  }, [authFetch, token, isConsoleReady]);
 
-  /** Populate chat window with conversation data on page load */
   useEffect(() => {
+    if (!isConsoleReady || !token) return;
+
     let cancelled = false;
 
     function uniqById<T extends { id: string | number }>(arr: T[]) {
       const seen = new Set<string | number>();
-      return arr.filter(m => (seen.has(m.id) ? false : (seen.add(m.id), true)));
+      return arr.filter((entry) => {
+        if (seen.has(entry.id)) return false;
+        seen.add(entry.id);
+        return true;
+      });
     }
 
     async function loadConversation() {
+      const bootTs = Date.now();
+      setMessages([
+        {
+          id: `boot-${bootTs}`,
+          role: "system",
+          text: `VERSION ${apiVersion || "--"} // SECURE CHANNEL ACTIVE // ${activeUsername || "GUEST"}`,
+          createdAt: bootTs,
+          animateOnMount: true,
+        },
+        {
+          id: `welcome-${bootTs + 1}`,
+          role: "assistant",
+          text: `WELCOME, USER. I AM ${normalizedAgentName}. SHARE YOUR NEXT THOUGHT.`,
+          createdAt: bootTs + 1,
+          animateOnMount: true,
+        },
+      ]);
+
       try {
-        setMessages([
-          {
-            id: 1,
-            role: "system",
-            text:
-              `VERSION ${apiVersion} — YOU ARE BEING MONITORED FOR YOUR SAFETY — ` + activeUsername,
-          },
-          {
-            id: 2,
-            role: "assistant",
-            text:
-              `WELCOME, USER. I AM ${agentName}. WHAT THOUGHT WOULD YOU LIKE TO SHARE?`,
-          },
-        ])
         const res = await authFetch(api(`/messages/conversation`), {
           headers: { Accept: "application/json" },
         });
-        if (!res.ok) return; // silently ignore if no history yet
+
+        if (!res.ok) return;
+
         const data = await res.json();
         const msgs: any[] = data?.conversation?.messages || [];
         if (!msgs.length || cancelled) return;
 
-        // sort ascending by time
-        const sorted = [...msgs].sort(
-          (a, b) =>
-            new Date(a.timestamp || 0).getTime() - new Date(b.timestamp || 0).getTime()
-        );
+        const mapped = [...msgs]
+          .sort(
+            (a, b) =>
+              new Date(a.timestamp || 0).getTime() -
+              new Date(b.timestamp || 0).getTime()
+          )
+          .map((message, index) => {
+            const createdAt = new Date(message.timestamp || 0).getTime() || Date.now() + index;
+            return {
+              id: message.id || createdAt,
+              role: message.from_agent ? ("assistant" as const) : ("user" as const),
+              text: message.message ?? "",
+              createdAt,
+            };
+          });
 
-        const mapped = sorted.map((m, i) => ({
-          id: new Date(m.timestamp || 0).getTime() || i, // stable numeric id
-          role: m.from_agent ? ("assistant" as const) : ("user" as const),
-          text: m.message ?? "",
-        }));
-  
-        // Replace initial seed with server conversation
-        setMessages(prev => uniqById([...prev, ...mapped]));
+        setMessages((prev) => uniqById([...prev, ...mapped]));
       } catch {
-        /* ignore */
+        // Ignore conversation history errors.
       }
     }
 
     loadConversation();
-  }, [token, activeUsername, agentName]);
 
-  /** Populate Jasmine data */
+    return () => {
+      cancelled = true;
+    };
+  }, [authFetch, token, activeUsername, apiVersion, normalizedAgentName, isConsoleReady]);
+
   useEffect(() => {
+    if (!isConsoleReady || !token) return;
+
     let cancelled = false;
 
     async function fetchAgent() {
       try {
-        const url = api('/agents/active');
-
-        const res = await authFetch(`${url}`, {
+        const res = await authFetch(api(`/agents/active`), {
           headers: { Accept: "application/json" },
         });
-        if (!res.ok) throw new Error(`Agent fetch ${res.status}`);
-        const data = await res.json();
 
+        if (!res.ok) throw new Error(`Agent fetch ${res.status}`);
+
+        const data = await res.json();
         if (cancelled) return;
 
-        // Pull fields
         const agent = data?.agent;
         const name = agent?.name;
-        const capName = name ? name.toUpperCase() : "";
-        const mbti = agent?.personality?.["myers-briggs"] || agent?.personality?.myersBriggs || agent?.personality?.mbti;
+        const capName = name ? String(name).toUpperCase() : "SYNTHETIC SOUL";
+        const mbti =
+          agent?.personality?.["myers-briggs"] ||
+          agent?.personality?.myersBriggs ||
+          agent?.personality?.mbti;
         const idText = agent?.identity as string | undefined;
         const expression = agent?.global_expression;
 
-        const pMatrix: PersonalityMatrix | undefined = agent?.personality?.personality_matrix;
-        const eMatrix: EmotionMatrix | undefined = agent?.emotional_status?.emotions;
+        const personalityMatrix: PersonalityMatrix | undefined =
+          agent?.personality?.personality_matrix;
+        const emotionMatrix: EmotionMatrix | undefined =
+          agent?.emotional_status?.emotions;
 
         setAgentName(capName);
         setAgentMBTI(mbti);
         setAgentIdentity(idText);
-        setPersonality(pMatrix);
-        setEmotions(eMatrix);
+        setPersonality(personalityMatrix);
+        setEmotions(emotionMatrix);
         setAgentLoaded(true);
         setGlobalExpression(expression);
-      } catch (err: any) {
-        console.warn("Agent fetch failed:", err);
+      } catch {
         if (cancelled) return;
         setAgentLoaded(false);
       }
     }
 
     fetchAgent();
+    const id = setInterval(fetchAgent, 30_000);
 
-    // poll every 30 seconds (tweak as desired)
-    const id = setInterval(fetchAgent, 30 * 1000);
-    return () => { cancelled = true; clearInterval(id); };
-  }, [token]);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, [authFetch, token, isConsoleReady]);
 
-  /** Populate Latest thought */
   useEffect(() => {
+    if (!isConsoleReady || !token) return;
+
     let cancelled = false;
 
     async function fetchLatestThought() {
@@ -193,76 +393,122 @@ export default function SyntheticSoul({
         const res = await authFetch(api("/thoughts/latest"), {
           headers: { Accept: "application/json" },
         });
+
         if (!res.ok) return;
+
         const data = await res.json();
         if (cancelled) return;
 
-        const t = data?.latest_thought?.thought || "";
-        setLatestThought(t || "No recent thought.");
+        const thought = data?.latest_thought?.thought || "";
+        setLatestThought(thought || "NO RECENT THOUGHT AVAILABLE.");
       } catch {
-        /* ignore */
+        // Ignore thought endpoint errors.
       }
     }
 
     fetchLatestThought();
-    const id = setInterval(fetchLatestThought, 60 * 1000); // 🔁 1 min
-    return () => { cancelled = true; clearInterval(id); };
-  }, [token]);
+    const id = setInterval(fetchLatestThought, 60_000);
 
-  /** Smooth scroll to most recent messages */
-  useEffect(() => {
-    listRef.current?.scrollTo({
-      top: listRef.current.scrollHeight,
-      behavior: "smooth",
-    });
-  }, [messages, typing]);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, [authFetch, token, isConsoleReady]);
+
+  async function continueAsGuest() {
+    if (accessBusy) return;
+    if (apiStatus !== "online") {
+      setAccessError("BACKEND UNAVAILABLE. GUEST ACCESS IS DISABLED UNTIL LINK RESTORES.");
+      return;
+    }
+
+    setAccessBusy(true);
+    setAccessError(null);
+
+    try {
+      if (!token || !user?.guest) {
+        await startGuest();
+      }
+      setStartupPhase("ready");
+    } catch (error) {
+      setAccessError(toErrorMessage(error));
+    } finally {
+      setAccessBusy(false);
+    }
+  }
+
+  async function submitLogin() {
+    if (accessBusy) return;
+    if (apiStatus !== "online") {
+      setAccessError("BACKEND UNAVAILABLE. LOGIN IS DISABLED UNTIL LINK RESTORES.");
+      return;
+    }
+
+    if (!loginEmail.trim() || !loginPassword) {
+      setAccessError("EMAIL AND PASSWORD ARE REQUIRED.");
+      return;
+    }
+
+    setAccessBusy(true);
+    setAccessError(null);
+
+    try {
+      await login(loginEmail.trim(), loginPassword);
+      setStartupPhase("ready");
+    } catch (error) {
+      setAccessError(toErrorMessage(error));
+    } finally {
+      setAccessBusy(false);
+    }
+  }
 
   async function sendMessage() {
+    if (!isConsoleReady) return;
+
     const trimmed = input.trim();
     if (!trimmed || typing) return;
 
-    const userMsg = { id: Date.now(), role: "user" as const, text: trimmed };
-    setMessages((m) => [...m, userMsg]);
+    const now = Date.now();
+    const userMessage: ChatMessage = {
+      id: now,
+      role: "user",
+      text: trimmed,
+      createdAt: now,
+    };
+
+    setMessages((prev) => [...prev, userMessage]);
     setInput("");
     setTyping(true);
     setLive("");
 
     try {
-      const ignoreResponse = `${agentName} has chosen to ignore your correspondence.`;
-      let result: AskResult = { text: "" };
-      if (onAsk) {
-        result = await onAsk(trimmed);
-      } else {
-        // fallback for dev
-        result = { text: "ACK (demo)", time: Math.random() * 1.5 + 0.2, expression: "neutral" };
-      }
+      const result = onAsk
+        ? await onAsk(trimmed)
+        : { text: "ACK (demo)", time: Math.random() * 1.5 + 0.2, expression: "neutral" };
 
-      // Update assistant message text
-      const replyText = result.text;
-      if (replyText){
-        setMessages((m) => [
-          ...m,
-          { id: Date.now() + 1, role: "assistant", text: replyText },
-        ]);
-      }else{
-        setMessages((m) => [
-          ...m,
-          { id: Date.now() + 1, role: "system", text: ignoreResponse },
-        ]);
-      }
+      const replyText = result.text || `${normalizedAgentName} HAS CHOSEN SILENCE.`;
+      const role = result.text ? "assistant" : "system";
 
-      // Update panel fields
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: Date.now() + 1,
+          role,
+          text: replyText,
+          createdAt: Date.now() + 1,
+        },
+      ]);
+
       if (result.expression) setLocalExpression(result.expression);
       setLastLatency(result.time);
-      
-    } catch (err: any) {
-      setMessages((m) => [
-        ...m,
+    } catch {
+      setMessages((prev) => [
+        ...prev,
         {
           id: Date.now() + 2,
-          role: "assistant",
-          text:
-            `ERROR: ${agentName} THOUGHT FUNCTION FAILED. PLEASE CHECK SERVER.`,
+          role: "system",
+          text: `ERROR: ${normalizedAgentName} THOUGHT FUNCTION FAILED. CHECK SERVER LINK.`,
+          createdAt: Date.now() + 2,
         },
       ]);
     } finally {
@@ -271,252 +517,233 @@ export default function SyntheticSoul({
     }
   }
 
-  const grid = useMemo(() => {
-    const svg = encodeURIComponent(`
-      <svg xmlns='http://www.w3.org/2000/svg' width='64' height='64' viewBox='0 0 64 64'>
-        <defs>
-          <linearGradient id='g' x1='0' y1='0' x2='1' y2='1'>
-            <stop offset='0' stop-color='rgba(0,255,180,0.15)'/>
-            <stop offset='1' stop-color='rgba(0,180,255,0.05)'/>
-          </linearGradient>
-        </defs>
-        <path d='M0 32 H64 M32 0 V64' stroke='url(#g)' stroke-width='1'/>
-      </svg>`);
-    return `url("data:image/svg+xml,${svg}")`;
-  }, []);
+  if (!isConsoleReady) {
+    const bootProgress = `${Math.round((bootLineCount / BOOT_LINES.length) * 100)}%`;
+
+    return (
+      <div className="ss-startup-shell">
+        <div className="ss-crt-layer" aria-hidden="true" />
+        <div className="ss-noise-layer" aria-hidden="true" />
+
+        <section className="ss-startup-card" aria-label="Startup sequence">
+          <header className="ss-startup-header">
+            <span>SECURE ACCESS TERMINAL</span>
+            <span>PHASE::{startupPhase.toUpperCase()}</span>
+          </header>
+
+          <div className="ss-startup-body">
+            <div className="ss-startup-brand">
+              <span className="ss-brand-synthetic">Synthetic</span>
+              <span className="ss-brand-soul">Soul</span>
+            </div>
+
+            {startupPhase === "boot" && (
+              <>
+                <div className="ss-boot-log">
+                  {BOOT_LINES.slice(0, bootLineCount).map((line) => (
+                    <p key={line} className="ss-boot-line">
+                      {line}
+                    </p>
+                  ))}
+                  <p className="ss-boot-line ss-boot-pulse">
+                    {loading ? "[BOOT] AUTH SESSION VERIFYING" : "[BOOT] INITIALIZING ACCESS PORTAL"}
+                    <span className="ss-cursor">█</span>
+                  </p>
+                </div>
+
+                <div className="ss-boot-progress" role="progressbar" aria-valuemin={0} aria-valuemax={100}>
+                  <div className="ss-boot-progress-bar" style={{ width: bootProgress }} />
+                </div>
+              </>
+            )}
+
+            {startupPhase === "access" && (
+              <div className="ss-access-panel">
+                <div className="ss-access-title">AUTHORIZATION REQUIRED</div>
+                <div
+                  className={`ss-api-status ss-api-status-${apiStatus}`}
+                  role="status"
+                  aria-live="polite"
+                >
+                  {typedApiStatus}
+                  {typedApiStatus.length < apiStatusMessage.length && <span className="ss-cursor">█</span>}
+                </div>
+
+                {apiStatus !== "online" && (
+                  <div className="ss-api-actions">
+                    <button
+                      type="button"
+                      className="ss-access-btn ss-retry-btn"
+                      onClick={() => void checkApiAvailability(true)}
+                      disabled={accessBusy}
+                    >
+                      RETRY LINK CHECK
+                    </button>
+                    <span className="ss-api-auto">
+                      AUTO-RETRY ACTIVE ({Math.max(0, autoRetryCountdown ?? API_RETRY_INTERVAL_SEC)}s)
+                    </span>
+                  </div>
+                )}
+
+                {accessMode === "menu" ? (
+                  <div className="ss-access-actions">
+                    {user && !user.guest && (
+                      <button
+                        type="button"
+                        className="ss-access-btn"
+                        onClick={() => setStartupPhase("ready")}
+                        disabled={accessBusy}
+                      >
+                        CONTINUE AS @{user.username?.toUpperCase() || "USER"}
+                      </button>
+                    )}
+
+                    <button
+                      type="button"
+                      className="ss-access-btn"
+                      onClick={() => {
+                        setAccessMode("login");
+                        setAccessError(null);
+                      }}
+                      disabled={accessAuthDisabled}
+                    >
+                      LOGIN TO ACCOUNT
+                    </button>
+
+                    <button
+                      type="button"
+                      className="ss-access-btn"
+                      onClick={continueAsGuest}
+                      disabled={accessAuthDisabled}
+                    >
+                      CONTINUE AS GUEST
+                    </button>
+                  </div>
+                ) : (
+                  <div className="ss-access-form">
+                    <label htmlFor="startup-email">EMAIL</label>
+                    <input
+                      id="startup-email"
+                      type="email"
+                      value={loginEmail}
+                      onChange={(event) => setLoginEmail(event.target.value)}
+                      autoComplete="email"
+                      disabled={accessAuthDisabled}
+                    />
+
+                    <label htmlFor="startup-password">PASSWORD</label>
+                    <input
+                      id="startup-password"
+                      type="password"
+                      value={loginPassword}
+                      onChange={(event) => setLoginPassword(event.target.value)}
+                      autoComplete="current-password"
+                      disabled={accessAuthDisabled}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") {
+                          event.preventDefault();
+                          void submitLogin();
+                        }
+                      }}
+                    />
+
+                    <div className="ss-access-actions ss-access-actions-inline">
+                      <button
+                        type="button"
+                        className="ss-access-btn"
+                        onClick={() => {
+                          setAccessMode("menu");
+                          setAccessError(null);
+                        }}
+                        disabled={accessBusy}
+                      >
+                        BACK
+                      </button>
+                      <button
+                        type="button"
+                        className="ss-access-btn"
+                        onClick={() => void submitLogin()}
+                        disabled={accessAuthDisabled}
+                      >
+                        {accessBusy ? "VERIFYING..." : "ENTER"}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {accessError && <div className="ss-access-error">{accessError}</div>}
+
+                <div className="ss-access-disclaimer">
+                  UNAUTHORIZED ACCESS IS PROHIBITED. ALL SESSION EVENTS ARE LOGGED.
+                </div>
+              </div>
+            )}
+          </div>
+        </section>
+      </div>
+    );
+  }
 
   return (
-    <div className="relative h-screen w-full overflow-hidden bg-black text-green-200">
-      {/* CRT lines & ambient glows */}
-      <div
-        className="pointer-events-none absolute inset-0 z-10 mix-blend-screen"
-        style={{
-          backgroundImage:
-            "repeating-linear-gradient(0deg, rgba(255,255,255,0.05) 0, rgba(255,255,255,0.05) 1px, transparent 1px, transparent 2px)",
-          opacity: 0.25,
-        }}
+    <div className="ss-app-shell">
+      <div className="ss-crt-layer" aria-hidden="true" />
+      <div className="ss-noise-layer" aria-hidden="true" />
+
+      <HeaderBanner
+        username={activeUsername}
+        apiVersion={apiVersion}
+        authMenu={<AuthMenu />}
       />
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_-20%,rgba(0,255,120,0.2),transparent_40%),radial-gradient(circle_at_30%_120%,rgba(255,0,0,0.15),transparent_40%),radial-gradient(circle_at_110%_10%,rgba(0,120,255,0.2),transparent_35%)]" />
 
-      {/* Header — fixed height */}
-      <header className="relative z-[120] h-14 border-b border-emerald-500/30 bg-black/60 px-6 backdrop-blur flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="h-3 w-3 animate-pulse rounded-full bg-emerald-400 shadow-[0_0_20px_2px_rgba(16,185,129,0.75)]" />
-            <p className="text-xs tracking-widest text-emerald-300/90">
-              <span className="opacity-70">OVERSEER TODAY:</span> 居心地の良い
-            </p>
-          </div>
-          <div className="flex items-center gap-3">
-            {/* Show button to open insights on <xl screens */}
-            <button
-              onClick={() => setInsightsOpen(true)}
-              className="xl:hidden rounded border border-emerald-700/40 bg-black/50 px-2 py-1 text-[10px] uppercase tracking-widest text-emerald-300"
-            >
-              insights
-            </button>
-            {/* title block */}
-            <AuthMenu />
-            <div className="flex items-center gap-3">
-              <div className="hidden sm:block text-right">
-                  <h1 className="text-xl font-black leading-none text-transparent bg-clip-text bg-gradient-to-r from-emerald-300 via-cyan-300 to-blue-400 drop-shadow-[0_0_15px_rgba(34,211,238,0.6)]">
-                    SyntheticSoul<span className="text-rose-400">84</span>
-                  </h1>
-                  <span className="text-[10px] tracking-widest text-emerald-300/70">作成者:居心地の良い — 2025</span>
-              </div>
-            </div>
-          </div>  
-      </header>
+      <main className="ss-main-grid">
+        <section className="ss-console-column">
+          <button
+            type="button"
+            className="ss-mobile-console-toggle"
+            onClick={() => setMobileConsoleOpen((value) => !value)}
+            aria-expanded={mobileConsoleOpen}
+          >
+            [{mobileConsoleOpen ? "HIDE" : "SHOW"}] AGENT CONSOLE
+          </button>
 
-      {/* Main — fills the rest of the viewport; full-bleed, no page scroll */}
-      <main className="relative z-20 h-[calc(100vh-56px)] w-full px-4 sm:px-6 py-4">
-        <div className="
-          grid h-full gap-4
-          min-h-0
-          grid-cols-1
-          lg:grid-cols-[minmax(320px,0.35fr)_1fr]
-          xl:grid-cols-[minmax(320px,0.28fr)_1fr_minmax(280px,0.32fr)]
-        ">
-          {/* LEFT: Agent (no matrices) */}
-          <aside className="hidden lg:block min-w-0  overflow-auto rounded-2xl border border-emerald-500/25 bg-black/40 p-2">
-              <AgentPanel
-              agentName={agentName} 
-              expression={currentExpression} 
+          <div className={`ss-console-frame ${mobileConsoleOpen ? "is-open" : ""}`}>
+            <AgentConsolePanel
+              agentName={normalizedAgentName}
+              expression={currentExpression}
               lastLatency={lastLatency}
               mbti={agentMBTI}
               identity={agentIdentity}
               personality={personality}
               emotions={emotions}
               agentLoaded={agentLoaded}
-              showMatrices={false} 
-              />
-          </aside>
-
-          {/* Middle: Chat column */}
-          <section className="min-w-0 min-h-0 grid grid-rows-[auto_1fr_auto] gap-3">
-            {/* Title */} 
-            <div className="rounded-xl border border-emerald-400/30 bg-black/50 p-3 shadow-[0_0_40px_rgba(16,185,129,0.25)]">
-              <div className="flex items-center justify-between">
-                <div className="text-[13px] text-emerald-200/80 tracking-widest">
-                  <span className="mr-2">{agentName}</span>· SAVING CONVERSATION DATA…
-                </div>
-                <div className="text-xs text-emerald-300/70">“DON'T BE EVIL”</div>
-              </div>
-              <div className="mt-2 h-1.5 w-full overflow-hidden rounded bg-emerald-900/50">
-                <div className="h-full w-1/3 animate-[load_2.8s_ease_infinite] bg-gradient-to-r from-emerald-400 to-cyan-400" />
-              </div>
-            </div>
-
-            {/* Chat area (fills remaining height) */}
-            <div
-              className="relative min-h-0 rounded-2xl border border-emerald-400/30 bg-black/60 p-3 shadow-[0_0_60px_rgba(16,185,129,0.25)]"
-              style={{ backgroundImage: `${grid}`, backgroundSize: "64px 64px" }}
-            >
-              <div className="pointer-events-none absolute inset-0 rounded-2xl ring-1 ring-emerald-400/10" />
-              <div className="pointer-events-none absolute inset-x-0 top-0 h-16 rounded-t-2xl bg-gradient-to-b from-white/5 to-transparent" />
-
-              <div ref={listRef} className="relative z-10 h-full min-h-0 overflow-y-auto pr-1">
-                {messages.map((m) => (
-                  <Message key={m.id} role={m.role} text={m.text} username={activeUsername} agentName={agentName} />
-                ))}
-
-                {typing && (
-                  <div className="mt-3">
-                    <AssistantBubble>
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs">{agentName} THINKING</span>
-                        <Dots />
-                      </div>
-                      <div className="mt-2 text-emerald-100/90">
-                        {live}
-                        <span className="animate-pulse">▌</span>
-                      </div>
-                    </AssistantBubble>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Composer row — with a small ticker above input */}
-            <div className="grid grid-rows-[auto_auto] gap-2">
-              <section className="hidden md:block xl:hidden rounded-2xl border border-orange-400/40 bg-black/60 p-4 text-orange-200 shadow-[0_0_40px_rgba(251,146,60,0.25)]">
-                <p className="text-[12px] md:text-sm lg:text-base tracking-widest">
-                  {agentName}'S LATEST THOUGHT — {latestThought || "No recent thought."}
-                </p>
-              </section>
-              <div className="grid grid-cols-[1fr_auto] gap-3">
-                <textarea
-                  value={input}
-                  onChange={(e)=>setInput(e.target.value)}
-                  onKeyDown={(e)=>{
-                    if ((e.key==="Enter" && !e.shiftKey) || (e.key==="Enter" && (e.metaKey||e.ctrlKey))) {
-                      e.preventDefault(); sendMessage();
-                    }
-                  }}
-                  rows={1}
-                  className="h-12 min-h-12 max-h-40 resize-none rounded-xl border border-emerald-400/30 bg-black/70 px-4 py-3 leading-5"
-                  placeholder="ENTER YOUR THOUGHT…"
-                />
-                <button 
-                  onClick={sendMessage}
-                  disabled={typing || !input.trim()}
-                  className="h-12 rounded-xl border border-cyan-400/40 bg-gradient-to-br from-emerald-600/40 to-cyan-600/30 px-4 text-sm tracking-widest text-cyan-200 shadow-[0_0_25px_rgba(34,211,238,0.35)] transition active:scale-95 hover:shadow-[0_0_35px_rgba(34,211,238,0.55)]">
-                  TRANSMIT
-                </button>
-              </div>
-            </div>
-            <footer className="mb-8 mt-2 text-center text-[10px] tracking-widest text-emerald-300/60">
-              <div>YOU WATCH ME · {agentName} WATCHES YOU · SYNTHETIC SOUL</div>
-              <div className="mt-1 opacity-70">© 居心地の良い //</div>
-            </footer>
-          </section>
-          {/* Right: Insights (visible on xl+, hidden on smaller) */}
-          <aside className="hidden xl:block min-w-0 overflow-auto rounded-2xl border border-emerald-500/25 bg-black/40 p-2">
-            <InsightsPanel personality={personality} emotions={emotions} latestThought={latestThought} />
-          </aside>
-        </div>
-        {/* Off-canvas Insights for <xl screens */}
-        {insightsOpen && (
-          <div className="xl:hidden fixed inset-0 z-50">
-            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setInsightsOpen(false)} />
-            <div className="absolute right-0 top-0 h-full w-[86%] sm:w-[420px] max-w-[92vw] overflow-auto border-l border-emerald-700/30 bg-black p-3 shadow-2xl">
-              <div className="mb-2 flex items-center justify-between">
-                <div className="text-[10px] uppercase tracking-widest text-emerald-300/80">insights</div>
-                <button onClick={() => setInsightsOpen(false)} className="rounded border border-emerald-700/40 px-2 py-1 text-[10px] text-emerald-300">close</button>
-              </div>
-              <InsightsPanel personality={personality} emotions={emotions} latestThought={latestThought} />
-            </div>
+            />
           </div>
-        )}
+        </section>
+
+        <section className="ss-chat-column">
+          <LatestThoughtTicker thought={latestThought} />
+
+          <TerminalChatLog
+            messages={messages}
+            typing={typing}
+            live={live}
+          />
+
+          <SuggestedPromptChips
+            prompts={suggestedPrompts}
+            disabled={typing}
+            onPick={(prompt) => setInput(prompt)}
+          />
+
+          <TerminalInputBar
+            input={input}
+            typing={typing}
+            agentName={normalizedAgentName}
+            onInputChange={setInput}
+            onSend={sendMessage}
+          />
+        </section>
       </main>
-      <style>{`
-        @keyframes load { 0%{transform:translateX(-100%)} 100%{transform:translateX(400%)} }
-        .glitch { position: relative; text-shadow: 0 0 8px rgba(6,182,212,.65), 0 0 24px rgba(16,185,129,.45); }
-        .glitch:before, .glitch:after { content: attr(data-text); position: absolute; left:0; right:0; }
-        .glitch:before { transform: translate(1px,0); color: rgba(59,130,246,0.8); clip-path: polygon(0 0, 100% 0, 100% 45%, 0 45%); filter: blur(.5px); }
-        .glitch:after { transform: translate(-1px,0); color: rgba(248,113,113,0.8); clip-path: polygon(0 55%, 100% 55%, 100% 100%, 0 100%); filter: blur(.5px); }
-      `}</style>
-  </div>
-  );
-}
-
-function Message({ role, text, username, agentName }: { role: "user" | "assistant" | "system"; text: string; username: string | undefined; agentName: string | undefined; }) {
-  if (role === "system") {
-    return (
-      <div className="my-2 text-center text-[10px] tracking-widest text-emerald-300/70">
-        {text}
-      </div>
-    );
-  }
-  const isUser = role === "user";
-  return (
-    <div className={`mt-3 flex ${isUser ? "justify-end" : "justify-start"}`}>
-      {isUser ? (
-        <UserBubble>
-          <Label>{username}_//</Label>
-          <p className="whitespace-pre-wrap text-emerald-50/90">{text}</p>
-        </UserBubble>
-      ) : (
-        <AssistantBubble>
-          <Label>{agentName}_//</Label>
-          <p className="whitespace-pre-wrap text-emerald-100/90">{text}</p>
-        </AssistantBubble>
-      )}
     </div>
   );
 }
-
-function Label({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="mb-1 w-fit rounded bg-emerald-500/20 px-2 py-0.5 text-[10px] tracking-widest text-emerald-200">
-      {children}
-    </div>
-  );
-}
-
-function AssistantBubble({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="max-w-[85%] rounded-2xl border border-emerald-400/40 bg-gradient-to-b from-emerald-900/30 to-emerald-950/40 p-3 text-emerald-100 shadow-[0_0_35px_rgba(16,185,129,0.25)]">
-      {children}
-    </div>
-  );
-}
-
-function UserBubble({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="max-w-[85%] rounded-2xl border border-cyan-400/40 bg-gradient-to-b from-cyan-900/20 to-sky-950/40 p-3 text-cyan-100 shadow-[0_0_35px_rgba(34,211,238,0.25)]">
-      {children}
-    </div>
-  );
-}
-
-function Dots() {
-  return (
-    <div className="flex items-end gap-1">
-      <span className="block h-1.5 w-1.5 animate-bounce rounded-full bg-emerald-300 [animation-delay:-120ms]" />
-      <span className="block h-1.5 w-1.5 animate-bounce rounded-full bg-emerald-300 [animation-delay:-60ms]" />
-      <span className="block h-1.5 w-1.5 animate-bounce rounded-full bg-emerald-300" />
-    </div>
-  );
-}
-
-

@@ -13,62 +13,102 @@ export default function AuthMenu() {
 
   const submit = async () => {
     setErr(null);
+
     try {
       if (mode === "login") {
         await login(email, password);
       } else if (mode === "claim") {
         await claim(email, username, password);
       }
+
       setOpen(false);
       setMode(null);
-      setEmail(""); setUsername(""); setPassword("");
-    } catch (e: any) {
-      setErr(e?.message || "Failed");
+      setEmail("");
+      setUsername("");
+      setPassword("");
+    } catch (error: any) {
+      setErr(error?.message || "FAILED");
     }
   };
 
   return (
-    <div className="relative">
+    <div className="ss-auth-menu">
       <button
-        onClick={() => setOpen(o => !o)}
-        className="rounded-md border border-emerald-700/40 bg-black/50 px-2 py-1 text-[10px] uppercase tracking-widest text-emerald-300"
+        type="button"
+        onClick={() => setOpen((value) => !value)}
+        className="ss-auth-trigger"
       >
-        {busy ? "…" : user?.username ? `@${user.username}` : "guest"}
+        {busy ? "..." : user?.username ? `@${user.username.toUpperCase()}` : "GUEST"}
       </button>
 
       {open && (
-        <div className="fixed right-3 top-14 z-[200] w-64 rounded-lg border border-emerald-700/30 bg-black/80 p-3 text-emerald-200 shadow-xl backdrop-blur">
+        <div className="ss-auth-popover">
           {!mode && (
-            <div className="space-y-2 text-[11px]">
-              <div className="flex items-center justify-between">
-                <span className="uppercase tracking-widest text-emerald-300/80">account</span>
-                <span className="text-emerald-400/70">{user?.email ?? (user?.guest ? "guest" : "")}</span>
+            <div className="ss-auth-section">
+              <div className="ss-auth-row">
+                <span>ACCOUNT</span>
+                <span>{user?.email ?? (user?.guest ? "GUEST" : "")}</span>
               </div>
-              <div className="flex flex-col gap-2">
-                <button onClick={() => setMode("login")} className="rounded border border-emerald-700/30 px-2 py-1 text-left hover:bg-emerald-900/20">login</button>
-                <button onClick={() => setMode("claim")} className="rounded border border-emerald-700/30 px-2 py-1 text-left hover:bg-emerald-900/20">claim account</button>
-                <button onClick={logout} className="rounded border border-emerald-700/30 px-2 py-1 text-left hover:bg-emerald-900/20">logout</button>
-              </div>
+
+              <button type="button" className="ss-auth-btn" onClick={() => setMode("login")}>
+                LOGIN
+              </button>
+              <button type="button" className="ss-auth-btn" onClick={() => setMode("claim")}>
+                CLAIM ACCOUNT
+              </button>
+              <button type="button" className="ss-auth-btn" onClick={logout}>
+                LOGOUT
+              </button>
             </div>
           )}
 
           {mode && (
-            <div className="space-y-2 text-[11px]">
-              <div className="uppercase tracking-widest text-emerald-300/80">{mode}</div>
-              <div className="space-y-2">
-                <input className="w-full rounded border border-emerald-700/30 bg-black/60 px-2 py-1 text-emerald-100"
-                       placeholder="email" value={email} onChange={e=>setEmail(e.target.value)} />
-                {mode === "claim" && (
-                  <input className="w-full rounded border border-emerald-700/30 bg-black/60 px-2 py-1 text-emerald-100"
-                         placeholder="username" value={username} onChange={e=>setUsername(e.target.value)} />
-                )}
-                <input className="w-full rounded border border-emerald-700/30 bg-black/60 px-2 py-1 text-emerald-100"
-                       placeholder="password" type="password" value={password} onChange={e=>setPassword(e.target.value)} />
+            <div className="ss-auth-section">
+              <div className="ss-auth-row">
+                <span>{mode.toUpperCase()}</span>
+                <span>SECURE FORM</span>
               </div>
-              {err && <div className="text-rose-400">{err}</div>}
-              <div className="flex gap-2 pt-1">
-                <button onClick={()=>{ setMode(null); setErr(null);} } className="rounded border border-emerald-700/30 px-2 py-1">back</button>
-                <button onClick={submit} className="rounded border border-emerald-700/30 bg-emerald-900/30 px-2 py-1">submit</button>
+
+              <input
+                className="ss-auth-input"
+                placeholder="EMAIL"
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+              />
+
+              {mode === "claim" && (
+                <input
+                  className="ss-auth-input"
+                  placeholder="USERNAME"
+                  value={username}
+                  onChange={(event) => setUsername(event.target.value)}
+                />
+              )}
+
+              <input
+                className="ss-auth-input"
+                placeholder="PASSWORD"
+                type="password"
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+              />
+
+              {err && <div className="ss-auth-error">{err}</div>}
+
+              <div className="ss-auth-actions">
+                <button
+                  type="button"
+                  className="ss-auth-btn"
+                  onClick={() => {
+                    setMode(null);
+                    setErr(null);
+                  }}
+                >
+                  BACK
+                </button>
+                <button type="button" className="ss-auth-btn" onClick={submit}>
+                  SUBMIT
+                </button>
               </div>
             </div>
           )}
