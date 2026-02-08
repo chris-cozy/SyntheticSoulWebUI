@@ -147,8 +147,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     localStorage.removeItem(LS_TOKEN);
     setToken(null);
     setUser(null);
-    await startGuest(); // immediately create a fresh guest
-  }, [token, getAuthHeader, startGuest]);
+  }, [token, getAuthHeader]);
 
   // Wrapper that auto-attaches token and retries once after refresh on 401.
   const authFetch = useCallback(async (pathOrUrl: string, init: RequestInit = {}) => {
@@ -174,10 +173,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             await me();
           } catch {
             const ok = await refresh();
-            if (!ok) await startGuest();
+            if (!ok) {
+              localStorage.removeItem(LS_TOKEN);
+              setToken(null);
+              setUser(null);
+            }
           }
-        } else {
-          await startGuest();
         }
       } finally {
         setLoading(false);
