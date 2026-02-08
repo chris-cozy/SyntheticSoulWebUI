@@ -14,7 +14,7 @@ const MESSAGE_TYPE = ((): "dm" | "group" => {
 })();
 
 export default function App() {
-  const { authFetch } = useAuth();
+  const { authFetch, token } = useAuth();
 
   // Helper: normalize various server shapes into AskResult
   function normalize(result: any): AskResult {
@@ -87,6 +87,91 @@ export default function App() {
     }
   }
 
+  async function fetchFinalJobResult(statusUrl: string, signal?: AbortSignal): Promise<AskResult> {
+    const res = await authFetch(statusUrl, { headers: { "Accept": "application/json" }, signal });
+    if (res.status === 404) throw new Error(await apiErrorFromResponse(res, "Job not found"));
+    if (!res.ok) throw new Error(await apiErrorFromResponse(res, "Status fetch failed"));
+    const data = await res.json();
+    const st = (data.status || "").toLowerCase();
+    if (st === "failed") throw new Error(data.error || "Job failed");
+    return normalize(data.result ?? null);
+  }
+
+  async function waitForJobViaSse(jobId: string, statusUrl: string, signal?: AbortSignal): Promise<void> {
+    if (!token) throw new Error("Missing access token for job stream");
+
+    const eventBase = statusUrl.replace(/\/+$/, "");
+    const defaultEventsPath = `${AGENT_API_BASE}/jobs/${encodeURIComponent(jobId)}/events`;
+    const eventsPath = eventBase.endsWith(`/jobs/${jobId}`) ? `${eventBase}/events` : defaultEventsPath;
+    const eventsUrl = `${eventsPath}?access_token=${encodeURIComponent(token)}`;
+    return await new Promise<void>((resolve, reject) => {
+      const source = new EventSource(eventsUrl, { withCredentials: true });
+      let settled = false;
+
+      const cleanup = () => {
+        if (settled) return;
+        settled = true;
+        source.close();
+      };
+
+      const terminalFromPayload = (payload: any) => {
+        const status = String(payload?.status || "").toLowerCase();
+        if (status === "succeeded" || status === "finished") {
+          cleanup();
+          resolve();
+          return true;
+        }
+        if (status === "failed") {
+          cleanup();
+          reject(new Error(payload?.error || "Job failed"));
+          return true;
+        }
+        return false;
+      };
+
+      const parsePayload = (raw: string) => {
+        try {
+          return JSON.parse(raw);
+        } catch {
+          return {};
+        }
+      };
+
+      const onStatus = (ev: MessageEvent) => {
+        terminalFromPayload(parsePayload(ev.data));
+      };
+
+      const onDone = (ev: MessageEvent) => {
+        terminalFromPayload(parsePayload(ev.data));
+      };
+
+      const onMessage = (ev: MessageEvent) => {
+        terminalFromPayload(parsePayload(ev.data));
+      };
+
+      const onError = () => {
+        cleanup();
+        reject(new Error("SSE disconnected"));
+      };
+
+      source.addEventListener("status", onStatus as EventListener);
+      source.addEventListener("done", onDone as EventListener);
+      source.onmessage = onMessage;
+      source.onerror = onError;
+
+      if (signal) {
+        signal.addEventListener(
+          "abort",
+          () => {
+            cleanup();
+            reject(new Error("aborted"));
+          },
+          { once: true }
+        );
+      }
+    });
+  }
+
   // external API call — adjust to your endpoint + auth
   const ask = async (input: string): Promise<AskResult> => {
     const controller = new AbortController();
@@ -126,8 +211,15 @@ export default function App() {
       }
     })();
 
-    // 3) Poll until done
-    return await pollJob(statusUrl, signal);
+    // 3) Stream status updates with SSE; fallback to polling if stream fails/disconnects.
+    try {
+      await waitForJobViaSse(job_id, statusUrl, signal);
+      // 4) One final fetch to retrieve canonical result payload.
+      return await fetchFinalJobResult(statusUrl, signal);
+    } catch (e: any) {
+      if (signal.aborted || String(e?.message || "").toLowerCase() === "aborted") throw e;
+      return await pollJob(statusUrl, signal);
+    }
   };
 
   return (
