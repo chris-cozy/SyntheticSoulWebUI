@@ -1,187 +1,167 @@
-# 🌌 Synthetic Soul UI
+# Synthetic Soul Web UI
 
-A neon-styled, cyber-aesthetic web interface for interacting with the **Synthetic Soul API agents**.
-It provides authentication, live chat, personality/emotion visualizations, and agent status dashboards.
+Retro terminal-style web client for interacting with Synthetic Soul API agents.
 
----
+This project has recently undergone a major UI and startup-flow overhaul. This README reflects the current implementation.
 
-## ✨ Features
+## What This App Does
 
-* **Authentication**
+- Runs a CRT-style boot sequence, then presents a secure access portal.
+- Lets users enter with an existing session, login, or continue as guest.
+- Checks backend reachability in the access portal and disables auth actions when the API is unavailable.
+- Displays a two-column terminal console UI:
+  - left: agent profile + diagnostics tabs
+  - right: terminal chat log + suggestions + input.
+- Submits chat requests as async jobs and resolves them via SSE first, polling fallback second.
 
-  * Guest sessions, login, signup (claim), refresh, and logout
-  * Token persistence with auto-refresh
-  * `AuthProvider` + `useAuth()` hook for React integration
+## Current UX Flow
 
-* **Agent Chat**
+1. **Boot sequence** (`boot` phase).
+2. **Access portal** (`access` phase), unless a valid active session already exists.
+3. **Main console** (`ready` phase).
 
-  * Secure chat interface with conversation persistence
-  * Polling system for async job responses
-  * Neon-themed UI with glitch and CRT effects
+Access portal behavior:
 
-* **Agent Panel**
+- Backend link status is shown as `checking`, `online`, or `offline`.
+- `LOGIN TO ACCOUNT` and `CONTINUE AS GUEST` are disabled unless status is `online`.
+- Manual retry button and 10-second auto-retry are available while offline.
 
-  * Displays agent **expression**, **MBTI type**, **identity text**
-  * Personality matrix (bars or radar chart)
-  * Emotional status (heat-mapped bars or radar chart)
-  * Latency indicator + online/offline state
+## Tech Stack
 
-* **Visualizations**
+- React 19
+- TypeScript
+- Vite 7
+- Tailwind CSS 4 (plus custom CSS)
+- Chart.js + react-chartjs-2 (legacy visualization modules still present)
 
-  * `NeonRadar`: general radar chart (e.g. personality)
-  * `NeonEmotionRadar`: emotion-mapped radar chart with color semantics
-  * Smooth neon gradients, animated bars, pulsing dots
+## Requirements
 
-* **Persistence**
+- Node.js 20+
+- npm 10+ (recommended)
 
-  * Session IDs + client IDs (`ids.ts`) stored in browser storage
-  * Agent view preferences (`bars` vs `radar`) saved locally
+## Quick Start
 
----
-
-## 🛠️ Tech Stack
-
-* **React 18 + Vite**
-* **TypeScript**
-* **Tailwind CSS** for neon cyber-aesthetic styling
-* **Chart.js + react-chartjs-2** for radar charts
-* **Custom Auth Layer** wrapping `/v1/auth/*` endpoints
-
----
-
-## 📂 Project Structure
-
-```
-src/
- ├── App.tsx               # Root app, wires auth + SyntheticSoul
- ├── SyntheticSoul.tsx     # Main chat + layout
- ├── AgentPanel.tsx        # Side panel for agent info
- ├── NeonRadar.tsx         # Personality radar visualization
- ├── NeonEmotionRadar.tsx  # Emotion radar visualization
- ├── AuthMenu.tsx          # Header auth menu component
- ├── auth.tsx              # Auth provider + hooks
- ├── ids.ts                # Client/session ID helpers
- ├── main.tsx              # Entry point
- └── index.css             # Tailwind + global CSS
-```
-
----
-
-## 🚀 Getting Started
-
-### 1. Prerequisites
-
-* **Node.js** ≥ 18
-* **pnpm**, **yarn**, or **npm**
-
-### 2. Install Dependencies
+1. Install dependencies:
 
 ```bash
 npm install
-# or
-yarn install
-# or
-pnpm install
 ```
 
-### 3. Environment Variables
+2. Configure environment:
 
-Create a `.env` file with:
+Create `.env.local`:
 
 ```env
-VITE_SYNTHETIC_SOUL_BASE_URL=https://your-api-base-url/v1
-VITE_SYNTHETIC_SOUL_DM_TYPE=dm   # "dm" or "group"
+VITE_SYNTHETIC_SOUL_BASE_URL=http://127.0.0.1:8000/v1
+VITE_SYNTHETIC_SOUL_BASE_URL_NO_VERSION=http://127.0.0.1:8000
+VITE_SYNTHETIC_SOUL_DM_TYPE=dm
 ```
 
-### 4. Run Dev Server
+3. Run development server:
 
 ```bash
 npm run dev
 ```
 
-Then visit: `http://localhost:5173`
-
-### 5. Build for Production
+4. Build production bundle:
 
 ```bash
 npm run build
 ```
 
----
+5. Preview production bundle:
 
-## 🔐 Authentication Flow
+```bash
+npm run preview
+```
 
-* On load:
+## Environment Variables
 
-  * If a valid token exists → refresh it
-  * Else → create a **guest session**
-* Actions available:
+| Variable | Required | Description |
+|---|---|---|
+| `VITE_SYNTHETIC_SOUL_BASE_URL` | Yes | API base URL with version segment (example: `http://127.0.0.1:8000/v1`). |
+| `VITE_SYNTHETIC_SOUL_BASE_URL_NO_VERSION` | Yes | API base URL without `/v1`, used for static expression images. |
+| `VITE_SYNTHETIC_SOUL_DM_TYPE` | Optional | Message type sent to `/messages/submit`; `dm` (default) or `group`. |
 
-  * `startGuest()` → POST `/auth/guest`
-  * `login(email, password)`
-  * `claim(email, username, password)`
-  * `refresh()` → POST `/auth/refresh` with `X-CSRF-Token` from `refresh_csrf` cookie
-  * `logout()` → clears token and starts a new guest
+## Scripts
 
-The `authFetch` helper automatically:
+| Script | Purpose |
+|---|---|
+| `npm run dev` | Start local Vite dev server. |
+| `npm run build` | Typecheck + production build. |
+| `npm run preview` | Preview production build locally. |
+| `npm run lint` | Run ESLint. |
+| `npm run release:patch` | Bump patch version (no git tag). |
+| `npm run release:minor` | Bump minor version (no git tag). |
+| `npm run release:major` | Bump major version (no git tag). |
 
-* Attaches the Bearer token
-* Sends credentials (`credentials: include`) for cookie-based refresh support
-* Retries once if a request fails with 401 (after refresh)
+## API Contract Summary
 
----
+The UI expects these backend capabilities:
 
-## 🖼️ UI Overview
+- Auth endpoints:
+  - `POST /auth/guest`
+  - `POST /auth/login`
+  - `POST /auth/claim`
+  - `POST /auth/refresh`
+  - `POST /auth/logout`
+  - `GET /auth/me`
+- Metadata and status:
+  - `GET /meta/version`
+- Chat flow:
+  - `POST /messages/submit` (sync or `202` async job)
+  - `GET /jobs/:id`
+  - `GET /jobs/:id/events` (SSE)
+  - `GET /messages/conversation`
+- Agent context:
+  - `GET /agents/active`
+  - `GET /thoughts/latest`
 
-* **Top bar**: branding, auth menu
-* **Left panel**: AgentPanel (expression image, MBTI, personality, emotions)
-* **Right panel**: Chat interface, conversation log, input box
-* **Status bars**: latency, version info, agent’s latest thought
+Detailed request/response expectations are documented in `docs/BACKEND_CONTRACT.md`.
 
----
+## Project Structure
 
-## 📊 Visualizations
+```text
+src/
+  App.tsx                    # API submission + async job orchestration
+  SyntheticSoul.tsx          # Startup phases + main console UI state
+  auth.tsx                   # Auth provider, token/refresh, authFetch
+  AuthMenu.tsx               # In-app account menu
+  components/
+    HeaderBanner.tsx
+    AgentConsolePanel.tsx
+    LatestThoughtTicker.tsx
+    TerminalChatLog.tsx
+    SuggestedPromptChips.tsx
+    TerminalInputBar.tsx
+  index.css                  # Global CRT/terminal styling
+  main.tsx                   # App bootstrap
+```
 
-* **Radar charts**
+Legacy modules still present in `src/` (not part of current primary UI path):
 
-  * `NeonRadar` for personality dimensions
-  * `NeonEmotionRadar` with emotion heat colors (`joy`, `anger`, `fear`, etc.)
-* **Bar charts**
+- `AgentPanel.tsx`
+- `InsightsPanel.tsx`
+- `NeonRadar.tsx`
+- `NeonEmotionRadar.tsx`
 
-  * Personality grouped by themes (Relational Traits, Drive, Stability…)
-  * Emotion bars with gradient fills + glowing indicators
+## Documentation Index
 
----
+- `README.md`: setup and operational overview.
+- `CHANGELOG.md`: versioned change history.
+- `docs/ARCHITECTURE.md`: frontend architecture and data flow.
+- `docs/BACKEND_CONTRACT.md`: backend expectations for UI compatibility.
+- `docs/CONTRIBUTING.md`: contributor workflow and release/doc policy.
 
-## ⚙️ Customization
+## Troubleshooting
 
-* Expressions loaded from `/public/expressions/*.jpg`
-* Neon colors adjustable in `NeonRadar.tsx` / `NeonEmotionRadar.tsx`
-* Tailwind classes for cyberpunk style (`bg-black/70`, emerald/cyan gradients)
+- **Stuck at access portal with auth actions disabled**
+  - Backend link check is failing; verify API availability and `VITE_SYNTHETIC_SOUL_BASE_URL`.
+- **Expressions not loading**
+  - Confirm `VITE_SYNTHETIC_SOUL_BASE_URL_NO_VERSION` and static asset paths on backend.
+- **No chat response after submit**
+  - Inspect `/messages/submit`, `/jobs/:id`, and `/jobs/:id/events` behavior.
 
----
+## License
 
-## 📡 API Endpoints Used
-
-* `/v1/auth/*` → guest, login, claim, refresh, logout, me
-* `/v1/messages/submit` → submit user input
-* `/v1/jobs/:id` → poll job results
-* `/v1/messages/conversation` → load conversation history
-* `/v1/agents/active` → active agent info (MBTI, personality, emotions)
-* `/v1/thoughts/latest` → agent’s latest thought
-* `/v1/meta/version` → API version info
-
----
-
-## 🧩 Future Enhancements
-
-* Multiple agent selection
-* Realtime streaming responses
-* Dark/light mode toggle
-* Advanced emotion mapping (beyond Plutchik’s wheel)
-
----
-
-## 📜 License
-
-MIT — free to modify, adapt, and use.
+MIT.

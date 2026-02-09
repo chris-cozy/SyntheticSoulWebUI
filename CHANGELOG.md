@@ -56,6 +56,11 @@ All notable changes to this project are documented in this file.
 - Disabled `LOGIN TO ACCOUNT` and `CONTINUE AS GUEST` while the backend is unavailable or link status is still checking.
 - Access portal now performs recurring backend reachability checks while offline and re-enables auth actions automatically when connectivity returns.
 - Startup intro chat lines (`VERSION ...` and welcome line) now load with typing effect only (without entry-motion animation).
+- Overhauled project documentation to match the current implementation:
+  - rewrote `README.md` with accurate setup, startup/access flow, environment variables, scripts, and troubleshooting
+  - added `docs/ARCHITECTURE.md` for frontend structure and runtime behavior
+  - added `docs/BACKEND_CONTRACT.md` for API compatibility expectations
+  - added `docs/CONTRIBUTING.md` with contributor workflow, checks, and documentation/changelog policy.
 
 ### Fixed
 
